@@ -1,0 +1,809 @@
+use crate::ast::*;
+
+grammar;
+
+pub program: Program = {
+    <ph:program_heading> semicolon <b:block> "." => Program {
+        head: ph,
+        block: b
+    },
+};
+
+Comma<T>: Vec<T> = {                                                                               
+   <v:T> <vs:("," <T>)*> => {
+       let mut res = vec![v];
+       for val in vs {
+           res.push(val);
+       }
+       res
+   }
+}
+
+#[inline]
+Semi<T>: Vec<T> = {                                                                               
+   <v:T> <vs:(";" <T>)*> => {
+       let mut res = vec![v];
+       for val in vs {
+           res.push(val);
+       }
+       res
+   }
+}
+
+Dotdot<T>: Vec<T> = {                                                                               
+   <v:T> <vs:(".." <T>)*> => {
+       let mut res = vec![v];
+       for val in vs {
+           res.push(val);
+       }
+       res
+   }
+}
+
+
+program_heading: ProgramHeading = {
+    "program" <i:identifier> => vec![i],
+};
+
+block: Block = {
+    <lds:label_declaration_part> <cds:constant_definition_part> <tds:type_definition_part> <vds:variable_declaration_part> <pds:procedure_and_function_declaration_part> <s:statement_part> => Block {
+        label_decls: lds,
+        constant_defs: cds,
+        type_defs: tds,
+        variable_decls: vds,
+        proc_decls: pds,
+        statements: s
+    },
+};
+
+label_declaration_part: Vec<usize> = {
+    "label" <ll:Comma<label>> semicolon => ll,
+    => vec![],
+};
+
+label: usize = {
+    r"\d+" => <>.parse::<usize>().unwrap(),
+};
+
+constant_definition_part: Vec<ConstDef> = {
+    "const" <cl:constant_definition*> => cl,
+    => vec![],
+};
+
+constant_definition: ConstDef = {
+    <i:identifier> "=" <e:cexpression> semicolon => ConstDef {
+        id: i,
+        expr: e
+    },
+};
+
+cexpression: ConstExpression = {
+    csimple_expression => ConstExpression::Simple(<>),
+    <lhs:csimple_expression> <op:relop> <rhs:csimple_expression> => ConstExpression::RelExpr {
+        lhs: lhs,
+        op: op,
+        rhs: rhs
+    },
+};
+
+csimple_expression: ConstSimpleExpression = {
+    cterm => ConstSimpleExpression::Term(<>),
+    <lhs:csimple_expression> <op:addop> <rhs:cterm> => ConstSimpleExpression::AddExpr {
+        lhs: Box::new(lhs),
+        op: op,
+        rhs: rhs
+    },
+};
+
+cterm: ConstTerm = {
+    cfactor => ConstTerm::Factor(<>),
+    <lhs:cterm> <op:mulop> <rhs:cfactor> => ConstTerm::MulExpr {
+        lhs: Box::new(lhs),
+        op: op,
+        rhs: rhs
+    },
+};
+
+cfactor: ConstFactor = {
+    <s:sign> <f:cfactor> => ConstFactor::Factor {
+        is_negative: s,
+        expr: Box::new(f)
+    },
+    cexponentiation => ConstFactor::Exponentiation(<>),
+};
+
+cexponentiation: ConstExponentiation = {
+    cprimary => ConstExponentiation::Primary(<>),
+    <lhs:cprimary> "**" <rhs:cexponentiation> => ConstExponentiation::Exponent {
+        base: lhs,
+        pow: Box::new(rhs)
+    },
+};
+
+cprimary: ConstPrimary = {
+    identifier => ConstPrimary::Identifier(<>),
+    "(" <e:cexpression> ")" => ConstPrimary::Paren(Box::new(e)),
+    unsigned_constant => ConstPrimary::UnsignedConstant(<>),
+    "not" <p:cprimary> => ConstPrimary::Not(Box::new(p)),
+};
+
+constant: Constant = {
+    non_string => Constant::NonString(<>),
+    <s:sign> <c:non_string> => Constant::SignedConstant {
+        is_negative: s,
+        constant: Box::new(c)
+    },
+    r"'[^']*'" => Constant::String(<>.to_string()),
+};
+
+sign: bool = {
+    "+" => false,
+    "-" => true,
+};
+
+non_string: NonString = {
+    r"\d+" => NonString::Integer(<>.parse::<u32>().unwrap()),
+    identifier => NonString::Identifier(<>),
+    r"\d+\.\d+" => NonString::Real(<>.parse::<f32>().unwrap()),
+};
+
+type_definition_part: Vec<TypeDef> = {
+    "type" <ts:type_definition*> => ts,
+    => vec![],
+};
+
+type_definition: TypeDef = {
+    <i:identifier> "=" <t:type_denoter> semicolon => TypeDef {
+        id: i,
+        typ: t
+    },
+};
+
+type_denoter: Type = {
+    identifier => Type::Identifier(<>),
+    new_type => Type::NewType(Box::new(<>)),
+};
+
+new_type: NewType = {
+    new_ordinal_type => NewType::OrdinalType(<>),
+    structured_type => NewType::StructuredType(Box::new(<>)),
+    new_pointer_type => <>,
+};
+
+new_ordinal_type: NewOrdinalType = {
+    enumerated_type => NewOrdinalType::EnumeratedType(<>),
+    subrange_type => <>,
+};
+
+enumerated_type: Vec<Identifier> = {
+    "(" <il:Comma<identifier>> ")" => il,
+};
+
+subrange_type: NewOrdinalType = {
+    <l:constant> ".." <h:constant> => NewOrdinalType::SubrangeType {
+        low: l, high: h
+    },
+};
+
+structured_type: StructuredType = {
+    array_type => <>,
+    record_type => <>,
+    set_type => <>,
+    file_type => StructuredType::File(Box::new(<>)),
+};
+
+array_type: StructuredType = {
+    "array" "[" <il:Comma<index_type>> "]" "of" <t:component_type> => StructuredType::Array {
+        index_list: il,
+        typ: Box::new(t)
+    },
+};
+
+index_type: OrdinalType = {
+    ordinal_type => <>,
+};
+
+ordinal_type: OrdinalType = {
+    new_ordinal_type => OrdinalType::NewOrdinalType(<>),
+    identifier => OrdinalType::Identifier(<>),
+};
+
+component_type: Type = {
+    type_denoter => <>,
+};
+
+record_type: StructuredType = {
+    "record" <r:Semi<record_section>> "end" => StructuredType::Record {
+        record_section: r,
+        variant_section: None
+    },
+    "record" <r:Semi<record_section>> semicolon <v:variant_part> "end" => StructuredType::Record {
+        record_section: r,
+        variant_section: v
+    },
+    "record" <v:variant_part> "end" => StructuredType::Record {
+        record_section: vec![],
+        variant_section: v
+    },
+};
+
+record_section: RecordSection = {
+    <il:Comma<identifier>> ":" <t:type_denoter> => RecordSection {
+        ids: il,
+        typ: t
+    },
+};
+
+variant_part: Option<RecordVariantPart> = {
+    "case" <s:variant_selector> "of" <l:Semi<variant>> semicolon => Some(RecordVariantPart {
+        selector: s,
+        variants: l
+    }),
+    "case" <s:variant_selector> "of" <l:Semi<variant>> => Some(RecordVariantPart {
+        selector: s,
+        variants: l
+    }),
+    => None,
+};
+
+variant_selector: VariantSelector = {
+    <f:tag_field> ":" <t:tag_type> => VariantSelector {
+        field: Some(f),
+        tag: t
+    },
+    tag_type => VariantSelector {
+        field: None,
+        tag: <>
+    },
+};
+
+variant: Variant = {
+    <cc:Comma<case_constant>> ":" "(" <r:Semi<record_section>> ")" => Variant {
+        case_consts: cc,
+        record_section: r,
+        variant_section: None
+    },
+    <cc:Comma<case_constant>> ":" "(" <r:Semi<record_section>> semicolon <v:variant_part> ")" => Variant {
+        case_consts: cc,
+        record_section: r,
+        variant_section: v
+    },
+    <cc:Comma<case_constant>> ":" "(" <v:variant_part> ")" => Variant {
+        case_consts: cc,
+        record_section: vec![],
+        variant_section: v
+    }
+};
+
+case_constant: CaseConstant = {
+    constant => CaseConstant {
+        low: <>,
+        high: None
+    },
+    <l:constant> ".." <h:constant> => CaseConstant {
+        low: l,
+        high: Some(h)
+    },
+};
+
+tag_field: Identifier = {
+    identifier => <>,
+};
+
+tag_type: Identifier = {
+    identifier => <>,
+};
+
+set_type: StructuredType = {
+    "set" "of" <t:base_type> => StructuredType::Set(t),
+};
+
+base_type: OrdinalType = {
+    ordinal_type => <>,
+};
+
+file_type: Type = {
+    "pfile" "of" <t:component_type> => t,
+};
+
+new_pointer_type: NewType = {
+    "^" <t:domain_type> => NewType::PointerType(t),
+};
+
+domain_type: Identifier = {
+    identifier => <>,
+};
+
+variable_declaration_part: Vec<VariableDecl> = {
+    "var" <l:Semi<variable_declaration>> semicolon => l,
+    => vec![],
+};
+
+variable_declaration: VariableDecl = {
+    <il:Comma<identifier>> ":" <t:type_denoter> => VariableDecl {
+        ids: il,
+        typ: t
+    },
+};
+
+procedure_and_function_declaration_part: Vec<ProcedureOrFuncDecl> = {
+    <l:Semi<proc_or_func_declaration>> semicolon => l,
+    => vec![],
+};
+
+proc_or_func_declaration: ProcedureOrFuncDecl = {
+    procedure_declaration => ProcedureOrFuncDecl::Procedure(<>),
+    function_declaration => ProcedureOrFuncDecl::Function(<>),
+};
+
+procedure_declaration: ProcedureDecl = {
+    <h:procedure_heading> semicolon <d:directive> => ProcedureDecl::Directive {
+        head: h,
+        is_forward: d
+    },
+    <h:procedure_heading> semicolon <b:procedure_block> => ProcedureDecl::Block {
+        head: h,
+        block: b
+    },
+};
+
+procedure_heading: ProcedureHeading = {
+    procedure_identification => ProcedureHeading {
+        name: <>,
+        params: vec![]
+    },
+    <id:procedure_identification> <ps:formal_parameter_list> => ProcedureHeading {
+        name: id,
+        params: ps
+    },
+};
+
+directive: bool = {
+    "forward" => true,
+    "external" => false,
+};
+
+formal_parameter_list: Vec<FormalParameter> = {
+    "(" <ps:Semi<formal_parameter_section>> ")" => ps,
+};
+
+formal_parameter_section: FormalParameter = {
+    value_parameter_specification => <>,
+    variable_parameter_specification => <>,
+    procedural_parameter_specification => <>,
+    functional_parameter_specification => <>,
+};
+
+value_parameter_specification: FormalParameter = {
+    <il:Comma<identifier>> ":" <i:identifier> => FormalParameter::Value {
+        lhs: il,
+        rhs: i
+    },
+};
+
+variable_parameter_specification: FormalParameter = {
+    "var" <il:Comma<identifier>> ":" <i:identifier> => FormalParameter::Variable {
+        lhs: il,
+        rhs: i
+    },
+};
+
+procedural_parameter_specification: FormalParameter = {
+    procedure_heading => FormalParameter::Procedure(<>),
+};
+
+functional_parameter_specification: FormalParameter = {
+    function_heading => FormalParameter::Function(<>),
+};
+
+procedure_identification: Identifier = {
+    "procedure" <i:identifier> => i,
+};
+
+procedure_block: Block = {
+    block => <>,
+};
+
+function_declaration: FunctionDecl = {
+    <h:function_heading> semicolon <d:directive> => FunctionDecl::Directive {
+        head: h,
+        is_forward: d
+    },
+    <i:function_identification> semicolon <b:function_block> => FunctionDecl::Identification {
+        name: i,
+        block: b
+    },
+    <h:function_heading> semicolon <b:function_block> => FunctionDecl::Block {
+        head: h,
+        block: b
+    },
+};
+
+function_heading: FunctionHeading = {
+    "function" <i:identifier> ":" <r:result_type> => FunctionHeading {
+        name: i,
+        params: vec![],
+        result: r
+    },
+    "function" <i:identifier> <ps:formal_parameter_list> ":" <r:result_type> => FunctionHeading {
+        name: i,
+        params: ps,
+        result: r
+    },
+};
+
+result_type: Identifier = {
+    identifier,
+};
+
+function_identification: Identifier = {
+    "function" <i:identifier> => i,
+};
+
+function_block: Block = {
+    block => <>,
+};
+
+statement_part: Vec<Statement> = {
+    compound_statement => <>,
+};
+
+compound_statement: Vec<Statement> = {
+    "begin" <s:Semi<statement>> "end" => s,
+};
+
+statement: Statement = {
+    open_statement => <>,
+    closed_statement => <>,
+};
+
+open_statement: Statement = {
+    <l:label> ":" <s:non_labeled_open_statement> => Statement::Open {
+        label: Some(l),
+        s: s
+    },
+    non_labeled_open_statement => Statement::Open {
+        label: None,
+        s: <>
+    },
+};
+
+closed_statement: Statement = {
+    <l:label> ":" <s:non_labeled_closed_statement> => Statement::Closed {
+        label: Some(l),
+        s: s
+    },
+    non_labeled_closed_statement => Statement::Closed {
+        label: None,
+        s: <>
+    },
+};
+
+non_labeled_closed_statement: ClosedStatement = {
+    assignment_statement => ClosedStatement::Assignment(<>),
+    procedure_statement => <>,
+    goto_statement => ClosedStatement::Goto(<>),
+    compound_statement => ClosedStatement::Compound(<>),
+    case_statement => <>,
+    repeat_statement => <>,
+    closed_with_statement => <>,
+    closed_if_statement => <>,
+    closed_while_statement => <>,
+    closed_for_statement => <>,
+    => ClosedStatement::Empty,
+};
+
+non_labeled_open_statement: OpenStatement = {
+    open_with_statement => <>,
+    open_if_statement => OpenStatement::If(<>),
+    open_while_statement => <>,
+    open_for_statement => <>,
+};
+
+repeat_statement: ClosedStatement = {
+    "repeat" <s:Semi<statement>> "until" <e:boolean_expression> => ClosedStatement::Repeat {
+        s: s,
+        until: e
+    },
+};
+
+open_while_statement: OpenStatement = {
+    "while" <e:boolean_expression> "do" <s:open_statement> => OpenStatement::While {
+        predicate: e,
+        s: Box::new(s)
+    },
+};
+
+closed_while_statement: ClosedStatement = {
+    "while" <e:boolean_expression> "do" <s:closed_statement> => ClosedStatement::While {
+        predicate: e,
+        s: Box::new(s)
+    },
+};
+
+open_for_statement: OpenStatement = {
+    "for" <v:control_variable> ":=" <init:initial_value> <d:direction> <f:final_value> "do" <s:open_statement> => OpenStatement::For {
+        var: v,
+        init: init,
+        inc: d,
+        fin: f,
+        s: Box::new(s)
+    },
+};
+
+closed_for_statement: ClosedStatement = {
+    "for" <v:control_variable> ":=" <init:initial_value> <d:direction> <f:final_value> "do" <s:closed_statement> => ClosedStatement::For {
+        var: v,
+        init: init,
+        inc: d,
+        fin: f,
+        s: Box::new(s)
+    },
+};
+
+open_with_statement: OpenStatement = {
+    "with" <l:Comma<variable_access>> "do" <s:open_statement> => OpenStatement::With {
+        vars: l,
+        s: Box::new(s)
+    },
+};
+
+closed_with_statement: ClosedStatement = {
+    "with" <l:Comma<variable_access>> "do" <s:closed_statement> => ClosedStatement::With {
+        vars: l,
+        s: Box::new(s)
+    },
+};
+
+open_if_statement: OpenIf = {
+    "if" <e:boolean_expression> "then" <s:statement> => OpenIf::WithoutElse {
+        predicate: e,
+        then: Box::new(s)
+    },
+    "if" <e:boolean_expression> "then" <then:closed_statement> "else" <els:open_statement> => OpenIf::WithElse {
+        predicate: e,
+        then: Box::new(then),
+        els: Box::new(els)
+    },
+};
+
+closed_if_statement: ClosedStatement = {
+    "if" <e:boolean_expression> "then" <then:closed_statement> "else" <els:closed_statement> => ClosedStatement::If {
+        predicate: e,
+        then: Box::new(then),
+        els: Box::new(els)
+    },
+};
+
+assignment_statement: Assignment = {
+    <v:variable_access> ":=" <e:expression> => Assignment {
+        var: v,
+        rhs: e
+    },
+};
+
+variable_access: VariableAccess = {
+    identifier => VariableAccess::Identifier(<>),
+    indexed_variable => <>,
+    field_designator => <>,
+    <v:variable_access> "^" => VariableAccess::Deref(Box::new(v)),
+};
+
+indexed_variable: VariableAccess = {
+    <v:variable_access> "[" <idx:Comma<index_expression>> "]" => VariableAccess::Indexed {
+        var: Box::new(v),
+        index: idx
+    },
+};
+
+index_expression: Expression = {
+    expression => <>,
+};
+
+field_designator: VariableAccess = {
+    <v:variable_access> "." <i:identifier> => VariableAccess::Field {
+        lhs: Box::new(v),
+        rhs: i
+    },
+};
+
+procedure_statement: ClosedStatement = {
+    <i:identifier> <p:params> => ClosedStatement::Procedure {
+        id: i,
+        params: p
+    },
+    identifier => ClosedStatement::Procedure {
+        id: <>,
+        params: vec![]
+    },
+};
+
+params: Vec<Parameter> = {
+    "(" <ps:Comma<actual_parameter>> ")" => ps,
+};
+
+actual_parameter: Parameter = {
+    expression => <>,
+};
+
+goto_statement: usize = {
+    "goto" <l:label> => l,
+};
+
+case_statement: ClosedStatement = {
+    "case" <i:case_index> "of" <l:Semi<case_list_element>> "end" => ClosedStatement::Case {
+        index: i,
+        cases: l,
+        otherwise: None
+    },
+    "case" <i:case_index> "of" <l:Semi<case_list_element>> ";" "end" => ClosedStatement::Case {
+        index: i,
+        cases: l,
+        otherwise: None
+    },
+    "case" <i:case_index> "of" <l:Semi<case_list_element>> semicolon otherwisepart <o:statement> "end" => ClosedStatement::Case {
+        index: i,
+        cases: l,
+        otherwise: Some(Box::new(o))
+    },
+    "case" <i:case_index> "of" <l:Semi<case_list_element>> semicolon otherwisepart <o:statement> ";" "end" => ClosedStatement::Case {
+        index: i,
+        cases: l,
+        otherwise: Some(Box::new(o))
+    },
+};
+
+case_index: Expression = {
+    expression,
+};
+
+case_list_element: CaseElement = {
+    <l:Comma<case_constant>> ":" <s:statement> => CaseElement {
+        cases: l,
+        s: s
+    },
+};
+
+otherwisepart: () = {
+    "otherwise",
+    "otherwise" ":",
+};
+
+control_variable: Identifier = {
+    identifier,
+};
+
+initial_value: Expression = {
+    expression,
+};
+
+direction: bool = {
+    "to" => true,
+    "downto" => false,
+};
+
+final_value: Expression = {
+    expression,
+};
+
+boolean_expression: Expression = {
+    expression,
+};
+
+expression: Expression = {
+    simple_expression => Expression::Simple(<>),
+    <l:simple_expression> <op:relop> <r:simple_expression> => Expression::RelExpr {
+        lhs: Box::new(l),
+        op: op,
+        rhs: Box::new(r)
+    },
+};
+
+simple_expression: SimpleExpression = {
+    term => SimpleExpression::Term(<>),
+    <l:simple_expression> <op:addop> <r:term> => SimpleExpression::AddExpr {
+        lhs: Box::new(l),
+        op: op,
+        rhs: r
+    },
+};
+
+term: Term = {
+    factor => Term::Factor(<>),
+    <l:term> <op:mulop> <r:factor> => Term::MulExpr {
+        lhs: Box::new(l),
+        op: op,
+        rhs: r
+    },
+};
+
+factor: Factor = {
+    <s:sign> <f:factor> => Factor::Factor {
+        is_negative: s,
+        expr: Box::new(f)
+    },
+    exponentiation => Factor::Exponentiation(<>),
+};
+
+exponentiation: Exponentiation = {
+    primary => Exponentiation::Primary(<>),
+    <p:primary> "**" <e:exponentiation> => Exponentiation::Exponent {
+        base: p,
+        pow: Box::new(e)
+    },
+};
+
+primary: Primary = {
+    variable_access => Primary::VariableAccess(<>),
+    unsigned_constant => Primary::UnsignedConstant(<>),
+    function_designator => <>,
+    set_constructor => Primary::Set(<>),
+    "(" <e:expression> ")" => Primary::Paren(Box::new(e)),
+    "not" <p:primary> => Primary::Not(Box::new(p)),
+};
+
+unsigned_constant: UnsignedConstant = {
+    unsigned_number => UnsignedConstant::Number(<>),
+    r"'[^']*'" => UnsignedConstant::String(<>.to_string()),
+    "nil" => UnsignedConstant::Nil,
+};
+
+unsigned_number: Number = {
+    unsigned_integer => Number::Integer(<>),
+    unsigned_real => Number::Real(<>),
+};
+
+unsigned_integer: u32 = {
+    r"\d+" => <>.parse::<u32>().unwrap(),
+};
+
+unsigned_real: f32 = {
+    r"\d+\.\d+" => <>.parse::<f32>().unwrap(),
+};
+
+function_designator: Primary = {
+    <i:identifier> <p:params> => Primary::FunctionCall {
+        name: i,
+        params: p
+    },
+};
+
+set_constructor: Vec<Vec<Expression>> = {
+    "[" <l:Comma<Dotdot<expression>>> "]" => l,
+};
+
+addop: AddOp = {
+    "+" => AddOp::Add,
+    "-" => AddOp::Sub,
+    "or" => AddOp::Or,
+};
+
+mulop: MulOp = {
+    "*" => MulOp::Mul,
+    "/" => MulOp::FDiv,
+    "div" => MulOp::IDiv,
+    "mod" => MulOp::Mod,
+    "and" => MulOp::And,
+};
+
+relop: RelOp = {
+    "=" => RelOp::Equal,
+    "<>" => RelOp::NotEqual,
+    "<" => RelOp::Less,
+    ">" => RelOp::Greater,
+    "<=" => RelOp::LessEqual,
+    ">=" => RelOp::GreaterEqual,
+    "in" => RelOp::In,
+};
+
+identifier: Identifier = {
+    r"[a-zA-Z][a-zA-Z0-9]*" => <>.to_string(),
+};
+
+semicolon: () = {
+    ";",
+};
+
+comma: () = {
+    ",",
+};
