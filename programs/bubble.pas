@@ -1,27 +1,20 @@
 program bubbleSort;
 var
-    toSort: array[0..5] of integer;
-    passChanges: boolean;
-    counter, index, temp: integer;
+    a: array[0..4] of integer;
+    i, j, x: integer;
 begin
-    toSort := [3, 25, 2, 69, 1];
-    passChanges := true;
-    while passChanges do
+    a := [3, 25, 2, 69, 1];
+    or i := 0 to 4 do
     begin
-        index := 0;
-        passChanges := false;
-        for index := 0 to 4 do
-        begin
-            if (toSort[index] > toSort[index +1]) then
+        for j := 4 downto i do
+            if a[i-1] > a[j] then
             begin
-                temp := toSort[index + 1];
-                toSort[index + 1] := toSort[index];
-                toSort[index] := temp;
-                passChanges := true;
+                x := a[i-1];
+                a[i-1] := a[j];
+                a[j] := x;
             end;
-        end;
     end;
 
-    for counter := 1 to 5 do
-        writeln(toSort[counter]);
+    for i := 0 to 4 do
+        writeln(a[i]);
 end.

@@ -1,8 +1,8 @@
-use crate::ast::{
-    Block, ConstDef, ConstExponentiation, ConstExpression, ConstFactor, ConstPrimary,
-    ConstSimpleExpression, ConstTerm, FormalParameter, FunctionDecl, Number, ProcedureDecl,
-    ProcedureOrFuncDecl, Program, Type, TypeDef, UnsignedConstant, VariableDecl,
-};
+use crate::ast::*;
+
+use std::collections::HashSet;
+
+use lazy_static::lazy_static;
 
 #[derive(Debug)]
 pub struct Scope {
@@ -178,4 +178,129 @@ fn convert_function(p: FunctionDecl) -> Proc {
             ret: Some(head.result),
         },
     }
+}
+
+pub fn check_variable_types(s: Scope) -> Vec<String> {
+    let mut errs = vec![];
+    for v in s.vars {
+        errs.append(&mut check_type(v.typ));
+    }
+    for p in s.procs {
+        match p {
+            Proc::Definition {
+                name: _,
+                params: _,
+                ret,
+                scope,
+            } => {
+                if let Some(s) = ret {
+                    if !DEFINED_TYPES.contains(&s[..]) {
+                        errs.push(format!("Unknown type {}", s));
+                    }
+                }
+                errs.append(&mut check_variable_types(scope));
+            }
+            Proc::Declaration {
+                name: _,
+                params: _,
+                ret,
+            } => {
+                if let Some(s) = ret {
+                    if !DEFINED_TYPES.contains(&s[..]) {
+                        errs.push(format!("Unknown type {}", s));
+                    }
+                }
+            }
+        }
+    }
+    errs
+}
+
+lazy_static! {
+    static ref DEFINED_TYPES: HashSet<&'static str> =
+        ["integer", "smallint", "longint", "real", "boolean", "string", "char", "byte",]
+            .iter()
+            .cloned()
+            .collect();
+}
+
+fn check_type(t: Type) -> Vec<String> {
+    let mut errs = vec![];
+    match t {
+        Type::Identifier(s) => {
+            if !DEFINED_TYPES.contains(&s[..]) {
+                errs.push(format!("Unknown type {}", s))
+            }
+        }
+        Type::NewType(t) => match *t {
+            NewType::OrdinalType(t) => {
+                errs.append(&mut check_newordinal(t));
+            }
+
+            NewType::PointerType(s) => {
+                if !DEFINED_TYPES.contains(&s[..]) {
+                    errs.push(format!("Unknown pointer type {}", s))
+                }
+            }
+            NewType::StructuredType(t) => errs.append(&mut check_structured(*t)),
+        },
+    }
+    errs
+}
+
+fn check_newordinal(t: NewOrdinalType) -> Vec<String> {
+    let mut errs = vec![];
+    match t {
+        NewOrdinalType::SubrangeType { low, high } => {
+            if let Err(s) = check_constant(low) {
+                errs.push(s);
+            }
+            if let Err(s) = check_constant(high) {
+                errs.push(s);
+            }
+            errs
+        }
+        _ => errs,
+    }
+}
+
+fn check_constant(c: Constant) -> Result<(), String> {
+    match c {
+        Constant::String(s) => Err(format!("Unexpected string '{}' in constant type", s)),
+        _ => Ok(()),
+    }
+}
+
+fn check_structured(s: StructuredType) -> Vec<String> {
+    let mut errs = vec![];
+    match s {
+        StructuredType::Array { index_list, typ } => {
+            for idx in index_list {
+                errs.append(&mut check_ordinal(idx));
+            }
+            errs.append(&mut check_type(*typ));
+        }
+        StructuredType::Set(t) => errs.append(&mut check_ordinal(t)),
+        StructuredType::File(t) => errs.append(&mut check_type(*t)),
+        StructuredType::Record {
+            record_section: _,
+            variant_section: _,
+        } => (),
+    }
+    errs
+}
+
+fn check_ordinal(t: OrdinalType) -> Vec<String> {
+    let mut errs = vec![];
+    match t {
+        OrdinalType::Identifier(s) => {
+            if !DEFINED_TYPES.contains(&s[..]) {
+                errs.push(format!("Unknown type {}", s))
+            }
+        }
+        OrdinalType::NewOrdinalType(t) => {
+            errs.append(&mut check_newordinal(t));
+        }
+    }
+    errs
 }

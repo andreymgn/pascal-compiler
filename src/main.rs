@@ -14,17 +14,25 @@ use std::fs;
 fn parse(filename: &str) {
     let contents = fs::read_to_string(filename).expect("Something went wrong reading the file");
     match pascal::programParser::new().parse(&contents) {
-        Ok(s) => println!("{:?}", s),
-        Err(e) => println!("{:?}", e),
+        Ok(s) => println!("{:#?}", s),
+        Err(e) => println!("{:#?}", e),
     }
 }
 
 fn symbols(filename: &str) {
     let contents = fs::read_to_string(filename).expect("Something went wrong reading the file");
     match pascal::programParser::new().parse(&contents) {
-        Ok(s) => println!("{:?}", semantic::get_symbols(s)),
-        Err(e) => println!("{:?}", e),
+        Ok(s) => println!("{:#?}", semantic::get_symbols(s)),
+        Err(e) => println!("{:#?}", e),
     }
+}
+
+fn typecheck(filename: &str) {
+    let contents = fs::read_to_string(filename).expect("Something went wrong reading the file");
+    let program = pascal::programParser::new().parse(&contents).unwrap();
+    let symbols = semantic::get_symbols(program);
+    let errs = semantic::check_variable_types(symbols);
+    println!("{:#?}", errs);
 }
 
 fn main() {
@@ -34,6 +42,7 @@ fn main() {
     match m.subcommand() {
         ("parse", Some(parse_matches)) => parse(parse_matches.value_of("input").unwrap()),
         ("symbols", Some(symbols_matches)) => symbols(symbols_matches.value_of("input").unwrap()),
+        ("types", Some(types_matches)) => typecheck(types_matches.value_of("input").unwrap()),
         _ => println!("Unknown subcommand"),
     }
 }

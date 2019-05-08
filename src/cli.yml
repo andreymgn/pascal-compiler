@@ -15,4 +15,11 @@ subcommands:
                 help: file to parse
                 required: true
                 index: 1
+    - types:
+        about: typecheck variables
+        args:
+            - input:
+                help: file to check
+                required: true
+                index: 1
 
