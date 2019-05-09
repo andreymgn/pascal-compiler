@@ -4,7 +4,7 @@ var
     i, j, x: integer;
 begin
     a := [3, 25, 2, 69, 1];
-    or i := 0 to 4 do
+    for i := 0 to 4 do
     begin
         for j := 4 downto i do
             if a[i-1] > a[j] then

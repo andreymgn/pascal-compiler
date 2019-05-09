@@ -4,7 +4,7 @@ grammar;
 
 pub program: Program = {
     <ph:program_heading> semicolon <b:block> "." => Program {
-        head: ph,
+        name: ph,
         block: b
     },
 };
@@ -41,8 +41,8 @@ Dotdot<T>: Vec<T> = {
 }
 
 
-program_heading: ProgramHeading = {
-    "program" <i:identifier> => vec![i],
+program_heading: Identifier = {
+    "program" <i:identifier> => i,
 };
 
 block: Block = {

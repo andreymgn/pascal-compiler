@@ -1,10 +1,8 @@
 #[derive(Debug)]
 pub struct Program {
-    pub head: ProgramHeading,
+    pub name: Identifier,
     pub block: Block,
 }
-
-pub type ProgramHeading = Vec<Identifier>;
 
 pub type Identifier = String;
 
