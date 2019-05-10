@@ -1,60 +1,60 @@
-program dectobin;
-const 
+PROGRAM dectobin;
+CONST 
   n = 8;
-type
-    iarray = array[integer] of integer;
-var
+TYPE
+    iarray = ARRAY[integer] OF integer;
+VAR
   m,p:integer;
-  B: array[1..n] of integer;
-  C: array[1..n] of integer;
-procedure DectoBin(x:integer; var A:iarray);
-var 
+  B: ARRAY[1..n] OF integer;
+  C: ARRAY[1..n] OF integer;
+PROCEDURE DectoBin(x:integer; VAR A:iarray);
+VAR 
   i:integer;
-begin
+BEGIN
   i:=1;
-  while i<=8 do
-    begin
-      A[i]:=x mod 2;
-      x:=x div 2;
+  WHILE i<=8 DO
+    BEGIN
+      A[i]:=x MOD 2;
+      x:=x DIV 2;
       i:=i+1;
-    end;
-end;
+    END;
+END;
 
-function NimSum(x,y:integer):integer;
-var
- binans :array[1..n] of integer;
+FUNCTION NimSum(x,y:integer):integer;
+VAR
+ binans :ARRAY[1..n] OF integer;
  i,j,result:integer;
  
-begin
+BEGIN
   DectoBin(x,B);
   DectoBin(y,C);
   i:=1;
   j:=1;
   result:=0;
-while i<=8 do
-  begin
-    if B[i]=C[i] then
+WHILE i<=8 DO
+  BEGIN
+    IF B[i]=C[i] THEN
       binans[i]:=0
-    else
+    ELSE
       binans[i]:=0;
     i:=i+1;
-  end;
+  END;
     i:=1;
-  while i<=n do
-    begin
-    if (binans[i] = 1) and (i<>1) then
-      begin
-        for j := 1 to n do
+  WHILE i<=n DO
+    BEGIN
+    IF (binans[i] = 1) AND (i<>1) THEN
+      BEGIN
+        FOR j := 1 TO n DO
           result:=result+2;
-      end
-    else if (binans[1] = 1) then
+      END
+    ELSE IF (binans[1] = 1) THEN
       result:=result+1;
-    end;
+    END;
         
   NimSum:=result;
-end;
-begin
+END;
+BEGIN
   readln(m);
   readln(p);
   writeln(NimSum(m,p));
-end.
+END.

@@ -15,7 +15,7 @@ pub struct Scope {
 
 #[derive(Debug)]
 pub enum Const {
-    Integer { name: String, value: u32 },
+    Integer { name: String, value: usize },
     Real { name: String, value: f32 },
     Identifier { name: String, value: String },
     String { name: String, value: String },

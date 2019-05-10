@@ -1,6 +1,13 @@
 name: pascalrust
 about: pascal compiler
 subcommands:
+    - lex:
+        about: print tokens
+        args:
+            - input:
+                help: file to tokenize
+                required: true
+                index: 1
     - parse:
         about: print ast
         args:

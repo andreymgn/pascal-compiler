@@ -1,20 +1,20 @@
-program bubbleSort;
-var
-    a: array[0..4] of integer;
+PROGRAM BubbleSort;
+VAR
+    a: ARRAY[0..4] OF integer;
     i, j, x: integer;
-begin
+BEGIN
     a := [3, 25, 2, 69, 1];
-    for i := 0 to 4 do
-    begin
-        for j := 4 downto i do
-            if a[i-1] > a[j] then
-            begin
+    FOR i := 0 TO 4 DO
+    BEGIN
+        FOR j := 4 DOWNTO i DO
+            IF a[i-1] > a[j] THEN
+            BEGIN
                 x := a[i-1];
                 a[i-1] := a[j];
                 a[j] := x;
-            end;
-    end;
+            END;
+    END;
 
-    for i := 0 to 4 do
+    FOR i := 0 TO 4 DO
         writeln(a[i]);
-end.
+END.

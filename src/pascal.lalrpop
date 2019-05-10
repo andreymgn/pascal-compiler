@@ -1,4 +1,5 @@
 use crate::ast::*;
+use crate::token::*;
 
 grammar;
 
@@ -62,7 +63,7 @@ label_declaration_part: Vec<usize> = {
 };
 
 label: usize = {
-    r"\d+" => <>.parse::<usize>().unwrap(),
+    "integer" => <>,
 };
 
 constant_definition_part: Vec<ConstDef> = {
@@ -133,7 +134,7 @@ constant: Constant = {
         is_negative: s,
         constant: Box::new(c)
     },
-    r"'[^']*'" => Constant::String(<>.to_string()),
+    "string" => Constant::String(<>),
 };
 
 sign: bool = {
@@ -142,9 +143,9 @@ sign: bool = {
 };
 
 non_string: NonString = {
-    r"\d+" => NonString::Integer(<>.parse::<u32>().unwrap()),
+    "integer" => NonString::Integer(<>),
     identifier => NonString::Identifier(<>),
-    r"\d+\.\d+" => NonString::Real(<>.parse::<f32>().unwrap()),
+    "float" => NonString::Real(<>),
 };
 
 type_definition_part: Vec<TypeDef> = {
@@ -744,7 +745,7 @@ primary: Primary = {
 
 unsigned_constant: UnsignedConstant = {
     unsigned_number => UnsignedConstant::Number(<>),
-    r"'[^']*'" => UnsignedConstant::String(<>.to_string()),
+    "string" => UnsignedConstant::String(<>),
     "nil" => UnsignedConstant::Nil,
 };
 
@@ -753,12 +754,12 @@ unsigned_number: Number = {
     unsigned_real => Number::Real(<>),
 };
 
-unsigned_integer: u32 = {
-    r"\d+" => <>.parse::<u32>().unwrap(),
+unsigned_integer: usize = {
+    "integer" => <>,
 };
 
 unsigned_real: f32 = {
-    r"\d+\.\d+" => <>.parse::<f32>().unwrap(),
+    "float" => <>,
 };
 
 function_designator: Primary = {
@@ -797,7 +798,7 @@ relop: RelOp = {
 };
 
 identifier: Identifier = {
-    r"[a-zA-Z][a-zA-Z0-9]*" => <>.to_string(),
+    "identifier" => <>,
 };
 
 semicolon: () = {
@@ -807,3 +808,73 @@ semicolon: () = {
 comma: () = {
     ",",
 };
+
+extern {
+    type Location = (usize, usize);
+    type Error = Error;
+    enum Token {
+        "." => Token::Period,
+        "," => Token::Comma,
+        ";" => Token::Semicolon,
+        ".." => Token::Dotdot,
+        "program" => Token::Program,
+        "label" => Token::Label,
+        "const" => Token::Const,
+        "=" => Token::Equals,
+        "**" => Token::Pow,
+        "(" => Token::LParen,
+        ")" => Token::RParen,
+        "not" => Token::Not,
+        "+" => Token::Plus,
+        "-" => Token::Minus,
+        "type" => Token::Type,
+        "array" => Token::Array,
+        "[" => Token::LBracket,
+        "]" => Token::RBracket,
+        "of" => Token::Of,
+        "record" => Token::Record,
+        "begin" => Token::Begin,
+        "end" => Token::End,
+        ":" => Token::Colon,
+        "case" => Token::Case,
+        "set" => Token::Set,
+        "pfile" => Token::PFile,
+        "^" => Token::Pointer,
+        "var" => Token::Var,
+        "forward" => Token::Forward,
+        "external" => Token::External,
+        "procedure" => Token::Procedure,
+        "function" => Token::Function,
+        "repeat" => Token::Repeat,
+        "until" => Token::Until,
+        "while" => Token::While,
+        "do" => Token::Do,
+        "for" => Token::For,
+        ":=" => Token::Assign,
+        "with" => Token::With,
+        "if" => Token::If,
+        "then" => Token::Then,
+        "else" => Token::Else,
+        "goto" => Token::Goto,
+        "otherwise" => Token::Otherwise,
+        "to" => Token::To,
+        "downto" => Token::Downto,
+        "nil" => Token::Nil,
+        "or" => Token::Or,
+        "*" => Token::Mul,
+        "/" => Token::FDiv,
+        "div" => Token::IDiv,
+        "mod" => Token::Mod,
+        "and" => Token::And,
+        "<>" => Token::NotEquals,
+        "<" => Token::Less,
+        ">" => Token::Greater,
+        "<=" => Token::LessEquals,
+        ">=" => Token::GreaterEquals,
+        "in" => Token::In,
+        "identifier" => Token::Identifier(<String>),
+        "float" => Token::Float(<f32>),
+        "string" => Token::String(<String>),
+        "integer" => Token::Integer(<usize>),
+    }
+}

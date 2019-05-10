@@ -90,7 +90,7 @@ pub enum Constant {
 
 #[derive(Debug, Clone)]
 pub enum NonString {
-    Integer(u32),
+    Integer(usize),
     Real(f32),
     Identifier(Identifier),
 }
@@ -104,7 +104,7 @@ pub enum UnsignedConstant {
 
 #[derive(Debug)]
 pub enum Number {
-    Integer(u32),
+    Integer(usize),
     Real(f32),
 }
 

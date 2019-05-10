@@ -1,5 +1,5 @@
-program hello;
+PROGRAM Hello;
 
-begin
+BEGIN
     writeln('Hello, world!');
-end.
+END.
