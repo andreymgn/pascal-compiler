@@ -117,13 +117,13 @@ PROGRAM a1;
 	VAR
 	    Day: DayType;
 	BEGIN
-	    write(' ': DaysHeadMoveOver);
+	    write(' ' * DaysHeadMoveOver);
 
 	    FOR Day := Sun TO Sat DO
 		BEGIN
 		    write('[ ');
 		    WriteDay(output, Day);
-		    write(' ]', ' ': TableDayWidth - AllowForDay - 4)
+		    write(' ]', ' ' * TableDayWidth - AllowForDay - 4)
 		END;
 	    writeln
 	END; 
@@ -291,10 +291,10 @@ PROGRAM a1;
 
 	    FOR Hour := FirstHour TO LastHour DO
 		BEGIN
-		    write(Map24to12(Hour):2, ':00 ');
+		    write(Map24to12(Hour) * 2, ':00 ');
 		    FOR Day := Sun TO Sat DO
 			write(Schedule[Hour, Day], 
-			    ' ': TableDayWidth - length(Schedule[Hour, Day]));
+			    ' ' * TableDayWidth - length(Schedule[Hour, Day]));
 		    writeln
 		END
 	END;
@@ -320,7 +320,7 @@ PROGRAM a1;
 
 	    
 	    writeln('>>> ', Employee,
-		' is scheduled for ', Total:1, ' hours. <<<<')
+		' is scheduled for ', Total * 1, ' hours. <<<<')
 	END; 
 
     

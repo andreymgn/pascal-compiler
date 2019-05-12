@@ -117,7 +117,7 @@ impl Codegen {
                             },
                             _ => return Err("Arrays with types other than integers as indices are not supported".to_string())
                         };
-                        LLVMArrayType(t, *size);
+                        LLVMArrayType(t, *size as u32);
                     }
                     _ => return Err("Types harder than arrays are not supported".to_string()),
                 },
