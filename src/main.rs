@@ -67,8 +67,10 @@ fn codegen(filename: &str) {
         .unwrap();
     unsafe {
         let mut cg = codegen::Codegen::new(program.name.clone());
-        cg.run(program);
-        cg.write_llvm_bitcode_to_file("out.ll");
+        match cg.run(program) {
+            Ok(_) => cg.write_llvm_bitcode_to_file("out.ll"),
+            Err(e) => println!("{}", e),
+        }
     }
 }
 

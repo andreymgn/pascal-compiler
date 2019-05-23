@@ -97,7 +97,7 @@ impl Codegen {
     }
 
     unsafe fn gen_program(&mut self, p: Program) -> Result<(), String> {
-        self.gen_variable_decls(p.block.variable_decls).unwrap();
+        self.gen_variable_decls(p.block.variable_decls)?;
 
         let func = LLVMAddFunction(
             self.module,
@@ -108,7 +108,7 @@ impl Codegen {
         let bb_entry = LLVMAppendBasicBlock(func, CString::new("entry").unwrap().as_ptr());
         LLVMPositionBuilderAtEnd(self.builder, bb_entry);
 
-        self.gen_statements(p.block.statements).unwrap();
+        self.gen_statements(p.block.statements)?;
 
         let mut iter_bb = LLVMGetFirstBasicBlock(func);
         while iter_bb != ptr::null_mut() {
@@ -125,7 +125,7 @@ impl Codegen {
 
     unsafe fn gen_variable_decls(&mut self, vars: Vec<VariableDecl>) -> Result<(), String> {
         for v in vars.into_iter() {
-            self.gen_variable_decl(v).unwrap();
+            self.gen_variable_decl(v)?;
         }
         Ok(())
     }
@@ -212,7 +212,7 @@ impl Codegen {
 
     pub unsafe fn gen_statements(&mut self, stmts: Vec<Statement>) -> Result<LLVMValueRef, String> {
         for s in stmts {
-            self.gen_statement(s).unwrap();
+            self.gen_statement(s)?;
         }
         Ok(ptr::null_mut())
     }
@@ -245,7 +245,7 @@ impl Codegen {
     pub unsafe fn gen_open_if(&mut self, typ: OpenIf) -> Result<LLVMValueRef, String> {
         match typ {
             OpenIf::WithoutElse { predicate, then } => {
-                let condition_tmp = self.gen_expression(&predicate).unwrap();
+                let condition_tmp = self.gen_expression(&predicate)?;
                 let condition = self.val_to_bool(condition_tmp);
 
                 let func = self.cur_func.unwrap();
@@ -258,7 +258,7 @@ impl Codegen {
 
                 LLVMPositionBuilderAtEnd(self.builder, bb_then);
                 // then block
-                self.gen_statement(*then).unwrap();
+                self.gen_statement(*then)?;
                 if cur_bb_has_no_terminator(self.builder) {
                     LLVMBuildBr(self.builder, bb_merge);
                 }
@@ -275,7 +275,7 @@ impl Codegen {
                 then,
                 els,
             } => {
-                let condition_tmp = self.gen_expression(&predicate).unwrap();
+                let condition_tmp = self.gen_expression(&predicate)?;
                 let condition = self.val_to_bool(condition_tmp);
 
                 let func = self.cur_func.unwrap();
@@ -288,14 +288,14 @@ impl Codegen {
 
                 LLVMPositionBuilderAtEnd(self.builder, bb_then);
                 // then block
-                self.gen_statement(*then).unwrap();
+                self.gen_statement(*then)?;
                 if cur_bb_has_no_terminator(self.builder) {
                     LLVMBuildBr(self.builder, bb_merge);
                 }
 
                 LLVMPositionBuilderAtEnd(self.builder, bb_else);
                 // else block
-                self.gen_statement(*els).unwrap();
+                self.gen_statement(*els)?;
                 if cur_bb_has_no_terminator(self.builder) {
                     LLVMBuildBr(self.builder, bb_merge);
                 }
@@ -319,9 +319,9 @@ impl Codegen {
         op: &RelOp,
         rhs: &SimpleExpression,
     ) -> Result<LLVMValueRef, String> {
-        let lhs_gen = self.gen_simple_expr(lhs).unwrap();
+        let lhs_gen = self.gen_simple_expr(lhs)?;
         let lhs_v = self.load_if_needed(lhs_gen);
-        let rhs_gen = self.gen_simple_expr(rhs).unwrap();
+        let rhs_gen = self.gen_simple_expr(rhs)?;
         let rhs_v = self.load_if_needed(rhs_gen);
         match op {
             RelOp::Equal => Ok(LLVMBuildICmp(
@@ -362,9 +362,9 @@ impl Codegen {
         op: &AddOp,
         rhs: &Term,
     ) -> Result<LLVMValueRef, String> {
-        let lhs_gen = self.gen_simple_expr(lhs).unwrap();
+        let lhs_gen = self.gen_simple_expr(lhs)?;
         let lhs_v = self.load_if_needed(lhs_gen);
-        let rhs_gen = self.gen_term(rhs).unwrap();
+        let rhs_gen = self.gen_term(rhs)?;
         let rhs_v = self.load_if_needed(rhs_gen);
         match op {
             AddOp::Add => Ok(LLVMBuildAdd(
@@ -401,9 +401,9 @@ impl Codegen {
         op: &MulOp,
         rhs: &Factor,
     ) -> Result<LLVMValueRef, String> {
-        let lhs_gen = self.gen_term(lhs).unwrap();
+        let lhs_gen = self.gen_term(lhs)?;
         let lhs_v = self.load_if_needed(lhs_gen);
-        let rhs_gen = self.gen_factor(rhs).unwrap();
+        let rhs_gen = self.gen_factor(rhs)?;
         let rhs_v = self.load_if_needed(rhs_gen);
         match op {
             MulOp::Mul => Ok(LLVMBuildMul(
@@ -444,7 +444,7 @@ impl Codegen {
         if is_negative {
             return Ok(LLVMBuildNeg(
                 self.builder,
-                v.unwrap(),
+                v?,
                 CString::new("neg").unwrap().as_ptr(),
             ));
         }
@@ -482,13 +482,12 @@ impl Codegen {
                 Err("Use of undeclared variable".to_string())
             }
             VariableAccess::Indexed { var, index } => {
-                let i = self.gen_expression(&*index).unwrap();
-                let v = self.gen_variable_access(var).unwrap();
+                let i = self.gen_expression(&*index)?;
+                let v = self.gen_variable_access(var)?;
                 println!("{:?}", index);
                 let i_load = self.load_if_needed(i);
-                let zero = self
-                    .gen_unsigned_constant(&UnsignedConstant::Number(Number::Integer(0)))
-                    .unwrap();
+                let zero =
+                    self.gen_unsigned_constant(&UnsignedConstant::Number(Number::Integer(0)))?;
                 let r = LLVMBuildGEP(
                     self.builder,
                     v,
@@ -545,13 +544,12 @@ impl Codegen {
         self.gen_assignment(Assignment {
             var: VariableAccess::Identifier(var.clone()),
             rhs: init,
-        })
-        .unwrap();
+        })?;
 
         // test
         LLVMBuildBr(self.builder, bb_test);
         LLVMPositionBuilderAtEnd(self.builder, bb_test);
-        let fin_expr = self.gen_expression(&fin).unwrap();
+        let fin_expr = self.gen_expression(&fin)?;
         let fin_expr_load = self.load_if_needed(fin_expr);
         let loop_var_load = self.load_if_needed(loop_var);
         let cond = LLVMBuildICmp(
@@ -565,7 +563,7 @@ impl Codegen {
 
         // body
         LLVMPositionBuilderAtEnd(self.builder, bb_body);
-        self.gen_statement(stmt).unwrap();
+        self.gen_statement(stmt)?;
         LLVMBuildBr(self.builder, bb_step);
 
         // step
@@ -584,8 +582,7 @@ impl Codegen {
                         Primary::UnsignedConstant(UnsignedConstant::Number(Number::Integer(1))),
                     ))),
                 }),
-            })
-            .unwrap();
+            })?;
         } else {
             self.gen_assignment(Assignment {
                 var: VariableAccess::Identifier(var.clone()),
@@ -600,8 +597,7 @@ impl Codegen {
                         Primary::UnsignedConstant(UnsignedConstant::Number(Number::Integer(1))),
                     ))),
                 }),
-            })
-            .unwrap();
+            })?;
         }
         LLVMBuildBr(self.builder, bb_test);
 
@@ -631,8 +627,8 @@ impl Codegen {
     }
 
     pub unsafe fn gen_assignment(&mut self, a: Assignment) -> Result<LLVMValueRef, String> {
-        let lhs = self.gen_variable_access(&a.var).unwrap();
-        let rhs = self.gen_expression(&a.rhs).unwrap();
+        let lhs = self.gen_variable_access(&a.var)?;
+        let rhs = self.gen_expression(&a.rhs)?;
         let rhs_v = self.load_if_needed(rhs);
         let r = LLVMBuildStore(self.builder, rhs_v, lhs);
         Ok(r)
@@ -651,7 +647,7 @@ impl Codegen {
                 format.as_ptr() as *const _,
                 b".int_format\0".as_ptr() as *const _,
             );
-            let param = self.gen_expression(&params[0]).unwrap();
+            let param = self.gen_expression(&params[0])?;
             let f = LLVMBuildZExtOrBitCast(
                 self.builder,
                 format_str,
