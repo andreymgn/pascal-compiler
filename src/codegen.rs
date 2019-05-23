@@ -484,7 +484,6 @@ impl Codegen {
             VariableAccess::Indexed { var, index } => {
                 let i = self.gen_expression(&*index)?;
                 let v = self.gen_variable_access(var)?;
-                println!("{:?}", index);
                 let i_load = self.load_if_needed(i);
                 let zero =
                     self.gen_unsigned_constant(&UnsignedConstant::Number(Number::Integer(0)))?;
