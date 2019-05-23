@@ -591,9 +591,9 @@ variable_access: VariableAccess = {
 };
 
 indexed_variable: VariableAccess = {
-    <v:variable_access> "[" <idx:Comma<index_expression>> "]" => VariableAccess::Indexed {
+    <v:variable_access> "[" <idx:index_expression> "]" => VariableAccess::Indexed {
         var: Box::new(v),
-        index: idx
+        index: Box::new(idx),
     },
 };
 

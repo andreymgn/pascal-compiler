@@ -348,7 +348,7 @@ pub enum VariableAccess {
     Identifier(Identifier),
     Indexed {
         var: Box<VariableAccess>,
-        index: Vec<Expression>,
+        index: Box<Expression>,
     },
     Field {
         lhs: Box<VariableAccess>,

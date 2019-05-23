@@ -29,4 +29,11 @@ subcommands:
                 help: file to check
                 required: true
                 index: 1
+    - codegen:
+        about: generate LLVM IR
+        args:
+            - input:
+                help: input file 
+                required: true
+                index: 1
 
