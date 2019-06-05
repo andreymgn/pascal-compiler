@@ -130,47 +130,62 @@ fn get_consts(cs: Vec<ConstDef>) -> Result<HashSet<Const>, Vec<String>> {
 }
 
 fn constexpr_to_const(name: &str, c: ConstExpression) -> Result<Const, String> {
-    if let ConstExpression::Simple(ConstSimpleExpression::Term(ConstTerm::Factor(
-        ConstFactor::Exponentiation(ConstExponentiation::Primary(p)),
-    ))) = c
+    if let ConstExpression::Simple {
+        meta: _,
+        value:
+            ConstSimpleExpression::Term {
+                meta: _,
+                value:
+                    ConstTerm::Factor {
+                        meta: _,
+                        value:
+                            ConstFactor::Exponentiation {
+                                meta: _,
+                                value: ConstExponentiation::Primary { meta: _, value: p },
+                            },
+                    },
+            },
+    } = c
     {
         match p {
-            ConstPrimary::Identifier(v) => {
+            ConstPrimary::Identifier { meta: _, value: v } => {
                 return Ok(Const {
                     name: name.to_string(),
                     variant: ConstType::Identifier(v),
                 })
             }
-            ConstPrimary::Paren(x) => return constexpr_to_const(name, *x),
-            ConstPrimary::UnsignedConstant(x) => match x {
-                UnsignedConstant::Number(n) => match n {
-                    Number::Integer(v) => {
+            ConstPrimary::Paren { meta: _, value: x } => return constexpr_to_const(name, *x),
+            ConstPrimary::UnsignedConstant { meta: _, value: x } => match x {
+                UnsignedConstant::Number { meta: _, value: n } => match n {
+                    Number::Integer { meta: _, value: v } => {
                         return Ok(Const {
                             name: name.to_string(),
                             variant: ConstType::Integer(v),
                         })
                     }
-                    Number::Real(v) => {
+                    Number::Real { meta: _, value: v } => {
                         return Ok(Const {
                             name: name.to_string(),
                             variant: ConstType::Real(v),
                         })
                     }
                 },
-                UnsignedConstant::String(v) => {
+                UnsignedConstant::String { meta: _, value: v } => {
                     return Ok(Const {
                         name: name.to_string(),
                         variant: ConstType::String(v),
                     })
                 }
-                UnsignedConstant::Nil => {
+                UnsignedConstant::Nil { meta: _ } => {
                     return Ok(Const {
                         name: name.to_string(),
                         variant: ConstType::Nil,
                     })
                 }
             },
-            ConstPrimary::Not(_) => return Err("I don't match `Not`".to_string()),
+            ConstPrimary::Not { meta: m, value: _ } => {
+                return Err(format!("I don't match `Not` at {}", m))
+            }
         }
     }
     Err("Didn't match".to_string())
@@ -199,14 +214,18 @@ fn get_procs(ps: Vec<ProcedureOrFuncDecl>) -> Result<HashSet<Proc>, Vec<String>>
     let mut res = HashSet::new();
     let mut errs = vec![];
     for p in ps.into_iter() {
-        let item = match p {
-            ProcedureOrFuncDecl::Procedure(v) => convert_procedure(v),
-            ProcedureOrFuncDecl::Function(v) => convert_function(v),
+        let (meta, item) = match p {
+            ProcedureOrFuncDecl::Procedure { meta, value: v } => (meta, convert_procedure(v)),
+            ProcedureOrFuncDecl::Function { meta, value: v } => (meta, convert_function(v)),
         };
         match item {
             Ok(proc) => {
+                let func_name = proc.name.clone();
                 if !res.insert(proc) {
-                    errs.push("Redeclaration of function".to_string());
+                    errs.push(format!(
+                        "Redeclaration of function {} at {}",
+                        func_name, meta
+                    ));
                 }
             }
             Err(mut es) => errs.append(es.as_mut()),
@@ -222,6 +241,7 @@ fn get_procs(ps: Vec<ProcedureOrFuncDecl>) -> Result<HashSet<Proc>, Vec<String>>
 fn convert_procedure(p: ProcedureDecl) -> Result<Proc, Vec<String>> {
     match p {
         ProcedureDecl::Directive {
+            meta: _,
             head,
             is_forward: _,
         } => Ok(Proc {
@@ -230,7 +250,11 @@ fn convert_procedure(p: ProcedureDecl) -> Result<Proc, Vec<String>> {
             ret: None,
             scope: None,
         }),
-        ProcedureDecl::Block { head, block } => {
+        ProcedureDecl::Block {
+            meta: _,
+            head,
+            block,
+        } => {
             let scope = convert_block(block)?;
             Ok(Proc {
                 name: head.name.to_string(),
@@ -244,7 +268,11 @@ fn convert_procedure(p: ProcedureDecl) -> Result<Proc, Vec<String>> {
 
 fn convert_function(p: FunctionDecl) -> Result<Proc, Vec<String>> {
     match p {
-        FunctionDecl::Identification { name, block } => {
+        FunctionDecl::Identification {
+            meta: _,
+            name,
+            block,
+        } => {
             let scope = convert_block(block)?;
             Ok(Proc {
                 name: name.to_string(),
@@ -253,7 +281,11 @@ fn convert_function(p: FunctionDecl) -> Result<Proc, Vec<String>> {
                 scope: Some(scope),
             })
         }
-        FunctionDecl::Block { head, block } => {
+        FunctionDecl::Block {
+            meta: _,
+            head,
+            block,
+        } => {
             let scope = convert_block(block)?;
             Ok(Proc {
                 name: head.name.to_string(),
@@ -263,6 +295,7 @@ fn convert_function(p: FunctionDecl) -> Result<Proc, Vec<String>> {
             })
         }
         FunctionDecl::Directive {
+            meta: _,
             head,
             is_forward: _,
         } => Ok(Proc {
@@ -303,22 +336,22 @@ lazy_static! {
 fn check_type(t: Type) -> Vec<String> {
     let mut errs = vec![];
     match t {
-        Type::Identifier(s) => {
+        Type::Identifier { meta, value: s } => {
             if !DEFINED_TYPES.contains(&s[..]) {
-                errs.push(format!("Unknown type {}", s))
+                errs.push(format!("Unknown type {} at {}", s, meta))
             }
         }
-        Type::NewType(t) => match *t {
-            NewType::OrdinalType(t) => {
+        Type::NewType { meta: _, value: t } => match *t {
+            NewType::OrdinalType { meta: _, value: t } => {
                 errs.append(&mut check_newordinal(t));
             }
 
-            NewType::PointerType(s) => {
+            NewType::PointerType { meta, value: s } => {
                 if !DEFINED_TYPES.contains(&s[..]) {
-                    errs.push(format!("Unknown pointer type {}", s))
+                    errs.push(format!("Unknown pointer type {} at {}", s, meta))
                 }
             }
-            NewType::StructuredType(t) => errs.append(&mut check_structured(*t)),
+            NewType::StructuredType { meta: _, value: t } => errs.append(&mut check_structured(*t)),
         },
     }
     errs
@@ -327,7 +360,7 @@ fn check_type(t: Type) -> Vec<String> {
 fn check_newordinal(t: NewOrdinalType) -> Vec<String> {
     let mut errs = vec![];
     match t {
-        NewOrdinalType::SubrangeType { low, high } => {
+        NewOrdinalType::SubrangeType { meta: _, low, high } => {
             if let Err(s) = check_constant(low) {
                 errs.push(s);
             }
@@ -342,7 +375,10 @@ fn check_newordinal(t: NewOrdinalType) -> Vec<String> {
 
 fn check_constant(c: Constant) -> Result<(), String> {
     match c {
-        Constant::String(s) => Err(format!("Unexpected string '{}' in constant type", s)),
+        Constant::String { meta, value: s } => Err(format!(
+            "Unexpected string '{}' in constant type at {}",
+            s, meta
+        )),
         _ => Ok(()),
     }
 }
@@ -350,15 +386,20 @@ fn check_constant(c: Constant) -> Result<(), String> {
 fn check_structured(s: StructuredType) -> Vec<String> {
     let mut errs = vec![];
     match s {
-        StructuredType::Array { index_list, typ } => {
+        StructuredType::Array {
+            meta: _,
+            index_list,
+            typ,
+        } => {
             for idx in index_list {
                 errs.append(&mut check_ordinal(idx));
             }
             errs.append(&mut check_type(*typ));
         }
-        StructuredType::Set(t) => errs.append(&mut check_ordinal(t)),
-        StructuredType::File(t) => errs.append(&mut check_type(*t)),
+        StructuredType::Set { meta: _, value: t } => errs.append(&mut check_ordinal(t)),
+        StructuredType::File { meta: _, value: t } => errs.append(&mut check_type(*t)),
         StructuredType::Record {
+            meta: _,
             record_section: _,
             variant_section: _,
         } => (),
@@ -369,12 +410,12 @@ fn check_structured(s: StructuredType) -> Vec<String> {
 fn check_ordinal(t: OrdinalType) -> Vec<String> {
     let mut errs = vec![];
     match t {
-        OrdinalType::Identifier(s) => {
+        OrdinalType::Identifier { meta, value: s } => {
             if !DEFINED_TYPES.contains(&s[..]) {
-                errs.push(format!("Unknown type {}", s))
+                errs.push(format!("Unknown type {} at {}", s, meta))
             }
         }
-        OrdinalType::NewOrdinalType(t) => {
+        OrdinalType::NewOrdinalType { meta: _, value: t } => {
             errs.append(&mut check_newordinal(t));
         }
     }

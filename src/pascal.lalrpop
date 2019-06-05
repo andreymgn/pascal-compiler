@@ -4,7 +4,8 @@ use crate::token::*;
 grammar;
 
 pub program: Program = {
-    <ph:program_heading> semicolon <b:block> "." => Program {
+    <s:@L> <ph:program_heading> semicolon <b:block> "." <e:@L> => Program {
+        meta: meta(s, e),
         name: ph,
         block: b
     },
@@ -47,13 +48,14 @@ program_heading: Identifier = {
 };
 
 block: Block = {
-    <lds:label_declaration_part> <cds:constant_definition_part> <tds:type_definition_part> <vds:variable_declaration_part> <pds:procedure_and_function_declaration_part> <s:statement_part> => Block {
+    <s:@L> <lds:label_declaration_part> <cds:constant_definition_part> <tds:type_definition_part> <vds:variable_declaration_part> <pds:procedure_and_function_declaration_part> <ss:statement_part> <e:@L> => Block {
+        meta: meta(s, e),
         label_decls: lds,
         constant_defs: cds,
         type_defs: tds,
         variable_decls: vds,
         proc_decls: pds,
-        statements: s
+        statements: ss
     },
 };
 
@@ -72,15 +74,20 @@ constant_definition_part: Vec<ConstDef> = {
 };
 
 constant_definition: ConstDef = {
-    <i:identifier> "=" <e:cexpression> semicolon => ConstDef {
+    <s:@L> <i:identifier> "=" <ex:cexpression> semicolon <e:@L> => ConstDef {
+        meta: meta(s, e),
         id: i,
-        expr: e
+        expr: ex
     },
 };
 
 cexpression: ConstExpression = {
-    csimple_expression => ConstExpression::Simple(<>),
-    <lhs:csimple_expression> <op:relop> <rhs:csimple_expression> => ConstExpression::RelExpr {
+    <s:@L> <ce:csimple_expression> <e:@L> => ConstExpression::Simple {
+        meta: meta(s, e),
+        value: ce
+    },
+    <s:@L> <lhs:csimple_expression> <op:relop> <rhs:csimple_expression> <e:@L> => ConstExpression::RelExpr {
+        meta: meta(s, e),
         lhs: lhs,
         op: op,
         rhs: rhs
@@ -88,8 +95,12 @@ cexpression: ConstExpression = {
 };
 
 csimple_expression: ConstSimpleExpression = {
-    cterm => ConstSimpleExpression::Term(<>),
-    <lhs:csimple_expression> <op:addop> <rhs:cterm> => ConstSimpleExpression::AddExpr {
+    <s:@L> <t:cterm> <e:@L> => ConstSimpleExpression::Term {
+        meta: meta(s, e),
+        value: t
+    },
+    <s:@L> <lhs:csimple_expression> <op:addop> <rhs:cterm> <e:@L> => ConstSimpleExpression::AddExpr {
+        meta: meta(s, e),
         lhs: Box::new(lhs),
         op: op,
         rhs: rhs
@@ -97,8 +108,12 @@ csimple_expression: ConstSimpleExpression = {
 };
 
 cterm: ConstTerm = {
-    cfactor => ConstTerm::Factor(<>),
-    <lhs:cterm> <op:mulop> <rhs:cfactor> => ConstTerm::MulExpr {
+    <s:@L> <f:cfactor> <e:@L> => ConstTerm::Factor{
+        meta: meta(s, e),
+        value: f
+    },
+    <s:@L> <lhs:cterm> <op:mulop> <rhs:cfactor> <e:@L> => ConstTerm::MulExpr {
+        meta: meta(s, e),
         lhs: Box::new(lhs),
         op: op,
         rhs: rhs
@@ -106,35 +121,62 @@ cterm: ConstTerm = {
 };
 
 cfactor: ConstFactor = {
-    <s:sign> <f:cfactor> => ConstFactor::Factor {
-        is_negative: s,
+    <s:@L> <si:sign> <f:cfactor> <e:@L> => ConstFactor::Factor {
+        meta: meta(s, e),
+        is_negative: si,
         expr: Box::new(f)
     },
-    cexponentiation => ConstFactor::Exponentiation(<>),
+    <s:@L> <ce:cexponentiation> <e:@L> => ConstFactor::Exponentiation {
+        meta: meta(s, e),
+        value: ce
+    },
 };
 
 cexponentiation: ConstExponentiation = {
-    cprimary => ConstExponentiation::Primary(<>),
-    <lhs:cprimary> "**" <rhs:cexponentiation> => ConstExponentiation::Exponent {
+    <s:@L> <p:cprimary> <e:@L> => ConstExponentiation::Primary {
+        meta: meta(s, e),
+        value: p
+    },
+    <s:@L> <lhs:cprimary> "**" <rhs:cexponentiation> <e:@L> => ConstExponentiation::Exponent {
+        meta: meta(s, e),
         base: lhs,
         pow: Box::new(rhs)
     },
 };
 
 cprimary: ConstPrimary = {
-    identifier => ConstPrimary::Identifier(<>),
-    "(" <e:cexpression> ")" => ConstPrimary::Paren(Box::new(e)),
-    unsigned_constant => ConstPrimary::UnsignedConstant(<>),
-    "not" <p:cprimary> => ConstPrimary::Not(Box::new(p)),
+    <s:@L> <i:identifier> <e:@L> => ConstPrimary::Identifier {
+        meta: meta(s, e),
+        value: i
+    },
+    <s:@L> "(" <ex:cexpression> ")" <e:@L> => ConstPrimary::Paren {
+        meta: meta(s, e),
+        value: Box::new(ex)
+    },
+    <s:@L> <uc:unsigned_constant> <e:@L> => ConstPrimary::UnsignedConstant {
+        meta: meta(s, e),
+        value: uc
+    },
+    <s:@L> "not" <p:cprimary> <e:@L> => ConstPrimary::Not {
+        meta: meta(s, e),
+        value: Box::new(p)
+    },
 };
 
 constant: Constant = {
-    non_string => Constant::NonString(<>),
-    <s:sign> <c:non_string> => Constant::SignedConstant {
-        is_negative: s,
+    <s:@L> <ns:non_string> <e:@L> => Constant::NonString {
+        meta: meta(s, e),
+        value: ns
+    },
+    <s:@L> <si:sign> <c:non_string> <e:@L> => Constant::SignedConstant {
+        meta: meta(s, e),
+        is_negative: si,
         constant: Box::new(c)
     },
-    "string" => Constant::String(<>),
+    <s:@L> <st:"string"> <e:@L> => Constant::String {
+        meta: meta(s, e),
+        value: st
+    },
 };
 
 sign: bool = {
@@ -143,9 +185,18 @@ sign: bool = {
 };
 
 non_string: NonString = {
-    "integer" => NonString::Integer(<>),
-    identifier => NonString::Identifier(<>),
-    "float" => NonString::Real(<>),
+    <s:@L> <i:"integer"> <e:@L> => NonString::Integer {
+        meta: meta(s, e),
+        value: i
+    },
+    <s:@L> <i:identifier> <e:@L> => NonString::Identifier {
+        meta: meta(s, e),
+        value: i
+    },
+    <s:@L> <f:"float"> <e:@L> => NonString::Real {
+        meta: meta(s, e),
+        value: f
+    },
 };
 
 type_definition_part: Vec<TypeDef> = {
@@ -154,25 +205,41 @@ type_definition_part: Vec<TypeDef> = {
 };
 
 type_definition: TypeDef = {
-    <i:identifier> "=" <t:type_denoter> semicolon => TypeDef {
+    <s:@L> <i:identifier> "=" <t:type_denoter> semicolon <e:@L> => TypeDef {
+        meta: meta(s, e),
         id: i,
         typ: t
     },
 };
 
 type_denoter: Type = {
-    identifier => Type::Identifier(<>),
-    new_type => Type::NewType(Box::new(<>)),
+    <s:@L> <i:identifier> <e:@L> => Type::Identifier {
+        meta: meta(s, e),
+        value: i
+    },
+    <s:@L> <nt:new_type> <e:@L> => Type::NewType {
+        meta: meta(s, e),
+        value: Box::new(nt)
+    },
 };
 
 new_type: NewType = {
-    new_ordinal_type => NewType::OrdinalType(<>),
-    structured_type => NewType::StructuredType(Box::new(<>)),
+    <s:@L> <nt:new_ordinal_type> <e:@L> => NewType::OrdinalType {
+        meta: meta(s, e),
+        value: nt
+    },
+    <s:@L> <st:structured_type> <e:@L> => NewType::StructuredType {
+        meta: meta(s, e),
+        value: Box::new(st)
+    },
     new_pointer_type => <>,
 };
 
 new_ordinal_type: NewOrdinalType = {
-    enumerated_type => NewOrdinalType::EnumeratedType(<>),
+    <s:@L> <et:enumerated_type> <e:@L> => NewOrdinalType::EnumeratedType {
+        meta: meta(s, e),
+        value: et
+    },
     subrange_type => <>,
 };
 
@@ -181,8 +248,10 @@ enumerated_type: Vec<Identifier> = {
 };
 
 subrange_type: NewOrdinalType = {
-    <l:constant> ".." <h:constant> => NewOrdinalType::SubrangeType {
-        low: l, high: h
+    <s:@L> <l:constant> ".." <h:constant> <e:@L> => NewOrdinalType::SubrangeType {
+        meta: meta(s, e),
+        low: l,
+        high: h
     },
 };
 
@@ -190,11 +259,15 @@ structured_type: StructuredType = {
     array_type => <>,
     record_type => <>,
     set_type => <>,
-    file_type => StructuredType::File(Box::new(<>)),
+    <s:@L> <ft:file_type> <e:@L> => StructuredType::File {
+        meta: meta(s, e),
+        value: Box::new(ft)
+    },
 };
 
 array_type: StructuredType = {
-    "array" "[" <il:Comma<index_type>> "]" "of" <t:component_type> => StructuredType::Array {
+    <s:@L> "array" "[" <il:Comma<index_type>> "]" "of" <t:component_type> <e:@L> => StructuredType::Array {
+        meta: meta(s, e),
         index_list: il,
         typ: Box::new(t)
     },
@@ -205,8 +278,14 @@ index_type: OrdinalType = {
 };
 
 ordinal_type: OrdinalType = {
-    new_ordinal_type => OrdinalType::NewOrdinalType(<>),
-    identifier => OrdinalType::Identifier(<>),
+    <s:@L> <nt:new_ordinal_type> <e:@L> => OrdinalType::NewOrdinalType {
+        meta: meta(s, e),
+        value: nt
+    },
+    <s:@L> <i:identifier> <e:@L> => OrdinalType::Identifier {
+        meta: meta(s, e),
+        value: i
+    },
 };
 
 component_type: Type = {
@@ -214,62 +293,73 @@ component_type: Type = {
 };
 
 record_type: StructuredType = {
-    "record" <r:Semi<record_section>> "end" => StructuredType::Record {
+    <s:@L> "record" <r:Semi<record_section>> "end" <e:@L> => StructuredType::Record {
+        meta: meta(s, e),
         record_section: r,
         variant_section: None
     },
-    "record" <r:Semi<record_section>> semicolon <v:variant_part> "end" => StructuredType::Record {
+    <s:@L> "record" <r:Semi<record_section>> semicolon <v:variant_part> "end" <e:@L> => StructuredType::Record {
+        meta: meta(s, e),
         record_section: r,
         variant_section: v
     },
-    "record" <v:variant_part> "end" => StructuredType::Record {
+    <s:@L> "record" <v:variant_part> "end" <e:@L> => StructuredType::Record {
+        meta: meta(s, e),
         record_section: vec![],
         variant_section: v
     },
 };
 
 record_section: RecordSection = {
-    <il:Comma<identifier>> ":" <t:type_denoter> => RecordSection {
+    <s:@L> <il:Comma<identifier>> ":" <t:type_denoter> <e:@L> => RecordSection {
+        meta: meta(s, e),
         ids: il,
         typ: t
     },
 };
 
 variant_part: Option<RecordVariantPart> = {
-    "case" <s:variant_selector> "of" <l:Semi<variant>> semicolon => Some(RecordVariantPart {
-        selector: s,
+   <s:@L> "case" <vs:variant_selector> "of" <l:Semi<variant>> semicolon <e:@L> => Some(RecordVariantPart {
+        meta: meta(s, e),
+        selector: vs,
         variants: l
     }),
-    "case" <s:variant_selector> "of" <l:Semi<variant>> => Some(RecordVariantPart {
-        selector: s,
+    <s:@L> "case" <vs:variant_selector> "of" <l:Semi<variant>> <e:@L> => Some(RecordVariantPart {
+        meta: meta(s, e),
+        selector: vs,
         variants: l
     }),
     => None,
 };
 
 variant_selector: VariantSelector = {
-    <f:tag_field> ":" <t:tag_type> => VariantSelector {
+    <s:@L> <f:tag_field> ":" <t:tag_type> <e:@L> => VariantSelector {
+        meta: meta(s, e),
         field: Some(f),
         tag: t
     },
-    tag_type => VariantSelector {
+    <s:@L> <tt:tag_type> <e:@L> => VariantSelector {
+        meta: meta(s, e),
         field: None,
-        tag: <>
+        tag: tt
     },
 };
 
 variant: Variant = {
-    <cc:Comma<case_constant>> ":" "(" <r:Semi<record_section>> ")" => Variant {
+    <s:@L> <cc:Comma<case_constant>> ":" "(" <r:Semi<record_section>> ")" <e:@L> => Variant {
+        meta: meta(s, e),
         case_consts: cc,
         record_section: r,
         variant_section: None
     },
-    <cc:Comma<case_constant>> ":" "(" <r:Semi<record_section>> semicolon <v:variant_part> ")" => Variant {
+    <s:@L> <cc:Comma<case_constant>> ":" "(" <r:Semi<record_section>> semicolon <v:variant_part> ")" <e:@L> => Variant {
+        meta: meta(s, e),
         case_consts: cc,
         record_section: r,
         variant_section: v
     },
-    <cc:Comma<case_constant>> ":" "(" <v:variant_part> ")" => Variant {
+    <s:@L> <cc:Comma<case_constant>> ":" "(" <v:variant_part> ")" <e:@L> => Variant {
+        meta: meta(s, e),
         case_consts: cc,
         record_section: vec![],
         variant_section: v
@@ -277,11 +367,13 @@ variant: Variant = {
 };
 
 case_constant: CaseConstant = {
-    constant => CaseConstant {
-        low: <>,
+    <s:@L> <c:constant> <e:@L> => CaseConstant {
+        meta: meta(s, e),
+        low: c,
         high: None
     },
-    <l:constant> ".." <h:constant> => CaseConstant {
+    <s:@L> <l:constant> ".." <h:constant> <e:@L> => CaseConstant {
+        meta: meta(s, e),
         low: l,
         high: Some(h)
     },
@@ -296,7 +388,10 @@ tag_type: Identifier = {
 };
 
 set_type: StructuredType = {
-    "set" "of" <t:base_type> => StructuredType::Set(t),
+    <s:@L> "set" "of" <t:base_type> <e:@L> => StructuredType::Set {
+        meta: meta(s, e),
+        value: t
+    },
 };
 
 base_type: OrdinalType = {
@@ -308,7 +403,10 @@ file_type: Type = {
 };
 
 new_pointer_type: NewType = {
-    "^" <t:domain_type> => NewType::PointerType(t),
+    <s:@L> "^" <t:domain_type> <e:@L> => NewType::PointerType {
+        meta: meta(s, e),
+        value: t
+    },
 };
 
 domain_type: Identifier = {
@@ -321,7 +419,8 @@ variable_declaration_part: Vec<VariableDecl> = {
 };
 
 variable_declaration: VariableDecl = {
-    <il:Comma<identifier>> ":" <t:type_denoter> => VariableDecl {
+    <s:@L> <il:Comma<identifier>> ":" <t:type_denoter> <e:@L> => VariableDecl {
+        meta: meta(s, e),
         ids: il,
         typ: t
     },
@@ -333,27 +432,37 @@ procedure_and_function_declaration_part: Vec<ProcedureOrFuncDecl> = {
 };
 
 proc_or_func_declaration: ProcedureOrFuncDecl = {
-    procedure_declaration => ProcedureOrFuncDecl::Procedure(<>),
-    function_declaration => ProcedureOrFuncDecl::Function(<>),
+    <s:@L> <pd:procedure_declaration> <e:@L> => ProcedureOrFuncDecl::Procedure {
+        meta: meta(s, e),
+        value: pd
+    },
+    <s:@L> <fd:function_declaration> <e:@L> => ProcedureOrFuncDecl::Function {
+        meta: meta(s, e),
+        value: fd
+    },
 };
 
 procedure_declaration: ProcedureDecl = {
-    <h:procedure_heading> semicolon <d:directive> => ProcedureDecl::Directive {
+    <s:@L> <h:procedure_heading> semicolon <d:directive> <e:@L> => ProcedureDecl::Directive {
+        meta: meta(s, e),
         head: h,
         is_forward: d
     },
-    <h:procedure_heading> semicolon <b:procedure_block> => ProcedureDecl::Block {
+    <s:@L> <h:procedure_heading> semicolon <b:procedure_block> <e:@L> => ProcedureDecl::Block {
+        meta: meta(s, e),
         head: h,
         block: b
     },
 };
 
 procedure_heading: ProcedureHeading = {
-    procedure_identification => ProcedureHeading {
-        name: <>,
+    <s:@L> <pi:procedure_identification> <e:@L> => ProcedureHeading {
+        meta: meta(s, e),
+        name: pi,
         params: vec![]
     },
-    <id:procedure_identification> <ps:formal_parameter_list> => ProcedureHeading {
+    <s:@L> <id:procedure_identification> <ps:formal_parameter_list> <e:@L> => ProcedureHeading {
+        meta: meta(s, e),
         name: id,
         params: ps
     },
@@ -376,25 +485,33 @@ formal_parameter_section: FormalParameter = {
 };
 
 value_parameter_specification: FormalParameter = {
-    <il:Comma<identifier>> ":" <i:identifier> => FormalParameter::Value {
+    <s:@L> <il:Comma<identifier>> ":" <i:identifier> <e:@L> => FormalParameter::Value {
+        meta: meta(s, e),
         lhs: il,
         rhs: i
     },
 };
 
 variable_parameter_specification: FormalParameter = {
-    "var" <il:Comma<identifier>> ":" <i:identifier> => FormalParameter::Variable {
+    <s:@L> "var" <il:Comma<identifier>> ":" <i:identifier> <e:@L> => FormalParameter::Variable {
+        meta: meta(s, e),
         lhs: il,
         rhs: i
     },
 };
 
 procedural_parameter_specification: FormalParameter = {
-    procedure_heading => FormalParameter::Procedure(<>),
+    <s:@L> <ph:procedure_heading> <e:@L> => FormalParameter::Procedure {
+        meta: meta(s, e),
+        value: ph
+    },
 };
 
 functional_parameter_specification: FormalParameter = {
-    function_heading => FormalParameter::Function(<>),
+    <s:@L> <fh:function_heading> <e:@L> => FormalParameter::Function {
+        meta: meta(s, e),
+        value: fh
+    },
 };
 
 procedure_identification: Identifier = {
@@ -406,27 +523,32 @@ procedure_block: Block = {
 };
 
 function_declaration: FunctionDecl = {
-    <h:function_heading> semicolon <d:directive> => FunctionDecl::Directive {
+    <s:@L> <h:function_heading> semicolon <d:directive> <e:@L> => FunctionDecl::Directive {
+        meta: meta(s, e),
         head: h,
         is_forward: d
     },
-    <i:function_identification> semicolon <b:function_block> => FunctionDecl::Identification {
+    <s:@L> <i:function_identification> semicolon <b:function_block> <e:@L> => FunctionDecl::Identification {
+        meta: meta(s, e),
         name: i,
         block: b
     },
-    <h:function_heading> semicolon <b:function_block> => FunctionDecl::Block {
+    <s:@L> <h:function_heading> semicolon <b:function_block> <e:@L> => FunctionDecl::Block {
+        meta: meta(s, e),
         head: h,
         block: b
     },
 };
 
 function_heading: FunctionHeading = {
-    "function" <i:identifier> ":" <r:result_type> => FunctionHeading {
+    <s:@L> "function" <i:identifier> ":" <r:result_type> <e:@L> => FunctionHeading {
+        meta: meta(s, e),
         name: i,
         params: vec![],
         result: r
     },
-    "function" <i:identifier> <ps:formal_parameter_list> ":" <r:result_type> => FunctionHeading {
+    <s:@L> "function" <i:identifier> <ps:formal_parameter_list> ":" <r:result_type> <e:@L> => FunctionHeading {
+        meta: meta(s, e),
         name: i,
         params: ps,
         result: r
@@ -459,139 +581,175 @@ statement: Statement = {
 };
 
 open_statement: Statement = {
-    <l:label> ":" <s:non_labeled_open_statement> => Statement::Open {
+    <s:@L> <l:label> ":" <st:non_labeled_open_statement> <e:@L> => Statement::Open {
+        meta: meta(s, e),
         label: Some(l),
-        s: s
+        s: st
     },
-    non_labeled_open_statement => Statement::Open {
+    <s:@L> <nlos:non_labeled_open_statement> <e:@L> => Statement::Open {
+        meta: meta(s, e),
         label: None,
-        s: <>
+        s: nlos
     },
 };
 
 closed_statement: Statement = {
-    <l:label> ":" <s:non_labeled_closed_statement> => Statement::Closed {
+    <s:@L> <l:label> ":" <st:non_labeled_closed_statement> <e:@L> => Statement::Closed {
+        meta: meta(s, e),
         label: Some(l),
-        s: s
+        s: st
     },
-    non_labeled_closed_statement => Statement::Closed {
+    <s:@L> <nlos:non_labeled_closed_statement> <e:@L> => Statement::Closed {
+        meta: meta(s, e),
         label: None,
-        s: <>
+        s: nlos
     },
 };
 
 non_labeled_closed_statement: ClosedStatement = {
-    assignment_statement => ClosedStatement::Assignment(<>),
+    <s:@L> <a:assignment_statement> <e:@L> => ClosedStatement::Assignment {
+        meta: meta(s, e),
+        value: a
+    },
     procedure_statement => <>,
-    goto_statement => ClosedStatement::Goto(<>),
-    compound_statement => ClosedStatement::Compound(<>),
+    <s:@L> <gs:goto_statement> <e:@L> => ClosedStatement::Goto {
+        meta: meta(s, e),
+        value: gs
+    },
+    <s:@L> <cs:compound_statement> <e:@L> => ClosedStatement::Compound {
+        meta: meta(s, e),
+        value: cs
+    },
     case_statement => <>,
     repeat_statement => <>,
     closed_with_statement => <>,
     closed_if_statement => <>,
     closed_while_statement => <>,
     closed_for_statement => <>,
-    => ClosedStatement::Empty,
+    <s:@L> <e:@L> => ClosedStatement::Empty {
+        meta: meta(s, e),
+    },
 };
 
 non_labeled_open_statement: OpenStatement = {
     open_with_statement => <>,
-    open_if_statement => OpenStatement::If(<>),
+    <s:@L> <ois:open_if_statement> <e:@L> => OpenStatement::If {
+        meta: meta(s, e),
+        value: ois
+    },
     open_while_statement => <>,
     open_for_statement => <>,
 };
 
 repeat_statement: ClosedStatement = {
-    "repeat" <s:Semi<statement>> "until" <e:boolean_expression> => ClosedStatement::Repeat {
-        s: s,
-        until: e
+    <s:@L> "repeat" <st:Semi<statement>> "until" <ex:boolean_expression> <e:@L> => ClosedStatement::Repeat {
+        meta: meta(s, e),
+        s: st,
+        until: ex
     },
 };
 
 open_while_statement: OpenStatement = {
-    "while" <e:boolean_expression> "do" <s:open_statement> => OpenStatement::While {
-        predicate: e,
-        s: Box::new(s)
+    <s:@L> "while" <ex:boolean_expression> "do" <st:open_statement> <e:@L> => OpenStatement::While {
+        meta: meta(s, e),
+        predicate: ex,
+        s: Box::new(st)
     },
 };
 
 closed_while_statement: ClosedStatement = {
-    "while" <e:boolean_expression> "do" <s:closed_statement> => ClosedStatement::While {
-        predicate: e,
-        s: Box::new(s)
+    <s:@L> "while" <ex:boolean_expression> "do" <st:closed_statement> <e:@L> => ClosedStatement::While {
+        meta: meta(s, e),
+        predicate: ex,
+        s: Box::new(st)
     },
 };
 
 open_for_statement: OpenStatement = {
-    "for" <v:control_variable> ":=" <init:initial_value> <d:direction> <f:final_value> "do" <s:open_statement> => OpenStatement::For {
+    <s:@L> "for" <v:control_variable> ":=" <init:initial_value> <d:direction> <f:final_value> "do" <st:open_statement> <e:@L> => OpenStatement::For {
+        meta: meta(s, e),
         var: v,
         init: init,
         inc: d,
         fin: f,
-        s: Box::new(s)
+        s: Box::new(st)
     },
 };
 
 closed_for_statement: ClosedStatement = {
-    "for" <v:control_variable> ":=" <init:initial_value> <d:direction> <f:final_value> "do" <s:closed_statement> => ClosedStatement::For {
+    <s:@L> "for" <v:control_variable> ":=" <init:initial_value> <d:direction> <f:final_value> "do" <st:closed_statement> <e:@L> => ClosedStatement::For {
+        meta: meta(s, e),
         var: v,
         init: init,
         inc: d,
         fin: f,
-        s: Box::new(s)
+        s: Box::new(st)
     },
 };
 
 open_with_statement: OpenStatement = {
-    "with" <l:Comma<variable_access>> "do" <s:open_statement> => OpenStatement::With {
+    <s:@L> "with" <l:Comma<variable_access>> "do" <st:open_statement> <e:@L> => OpenStatement::With {
+        meta: meta(s, e),
         vars: l,
-        s: Box::new(s)
+        s: Box::new(st)
     },
 };
 
 closed_with_statement: ClosedStatement = {
-    "with" <l:Comma<variable_access>> "do" <s:closed_statement> => ClosedStatement::With {
+    <s:@L> "with" <l:Comma<variable_access>> "do" <st:closed_statement> <e:@L> => ClosedStatement::With {
+        meta: meta(s, e),
         vars: l,
-        s: Box::new(s)
+        s: Box::new(st)
     },
 };
 
 open_if_statement: OpenIf = {
-    "if" <e:boolean_expression> "then" <s:statement> => OpenIf::WithoutElse {
-        predicate: e,
-        then: Box::new(s)
+    <s:@L> "if" <ex:boolean_expression> "then" <st:statement> <e:@L> => OpenIf::WithoutElse {
+        meta: meta(s, e),
+        predicate: ex,
+        then: Box::new(st)
     },
-    "if" <e:boolean_expression> "then" <then:closed_statement> "else" <els:open_statement> => OpenIf::WithElse {
-        predicate: e,
+    <s:@L> "if" <ex:boolean_expression> "then" <then:closed_statement> "else" <els:open_statement> <e:@L> => OpenIf::WithElse {
+        meta: meta(s, e),
+        predicate: ex,
         then: Box::new(then),
         els: Box::new(els)
     },
 };
 
 closed_if_statement: ClosedStatement = {
-    "if" <e:boolean_expression> "then" <then:closed_statement> "else" <els:closed_statement> => ClosedStatement::If {
-        predicate: e,
+    <s:@L> "if" <ex:boolean_expression> "then" <then:closed_statement> "else" <els:closed_statement> <e:@L> => ClosedStatement::If {
+        meta: meta(s, e),
+        predicate: ex,
         then: Box::new(then),
         els: Box::new(els)
     },
 };
 
 assignment_statement: Assignment = {
-    <v:variable_access> ":=" <e:expression> => Assignment {
+    <s:@L> <v:variable_access> ":=" <ex:expression> <e:@L> => Assignment {
+        meta: meta(s, e),
         var: v,
-        rhs: e
+        rhs: ex
     },
 };
 
 variable_access: VariableAccess = {
-    identifier => VariableAccess::Identifier(<>),
+    <s:@L> <i:identifier> <e:@L> => VariableAccess::Identifier {
+        meta: meta(s, e),
+        value: i
+    },
     indexed_variable => <>,
     field_designator => <>,
-    <v:variable_access> "^" => VariableAccess::Deref(Box::new(v)),
+    <s:@L> <v:variable_access> "^" <e:@L> => VariableAccess::Deref {
+        meta: meta(s, e),
+        value: Box::new(v)
+    },
 };
 
 indexed_variable: VariableAccess = {
-    <v:variable_access> "[" <idx:index_expression> "]" => VariableAccess::Indexed {
+    <s:@L> <v:variable_access> "[" <idx:index_expression> "]" <e:@L> => VariableAccess::Indexed {
+        meta: meta(s, e),
         var: Box::new(v),
         index: Box::new(idx),
     },
@@ -602,19 +760,22 @@ index_expression: Expression = {
 };
 
 field_designator: VariableAccess = {
-    <v:variable_access> "." <i:identifier> => VariableAccess::Field {
+    <s:@L> <v:variable_access> "." <i:identifier> <e:@L> => VariableAccess::Field {
+        meta: meta(s, e),
         lhs: Box::new(v),
         rhs: i
     },
 };
 
 procedure_statement: ClosedStatement = {
-    <i:identifier> <p:params> => ClosedStatement::Procedure {
+    <s:@L> <i:identifier> <p:params> <e:@L> => ClosedStatement::Procedure {
+        meta: meta(s, e),
         id: i,
         params: p
     },
-    identifier => ClosedStatement::Procedure {
-        id: <>,
+    <s:@L> <i:identifier> <e:@L> => ClosedStatement::Procedure {
+        meta: meta(s, e),
+        id: i,
         params: vec![]
     },
 };
@@ -632,22 +793,26 @@ goto_statement: usize = {
 };
 
 case_statement: ClosedStatement = {
-    "case" <i:case_index> "of" <l:Semi<case_list_element>> "end" => ClosedStatement::Case {
+    <s:@L> "case" <i:case_index> "of" <l:Semi<case_list_element>> "end" <e:@L> => ClosedStatement::Case {
+        meta: meta(s, e),
         index: i,
         cases: l,
         otherwise: None
     },
-    "case" <i:case_index> "of" <l:Semi<case_list_element>> ";" "end" => ClosedStatement::Case {
+    <s:@L> "case" <i:case_index> "of" <l:Semi<case_list_element>> ";" "end" <e:@L> => ClosedStatement::Case {
+        meta: meta(s, e),
         index: i,
         cases: l,
         otherwise: None
     },
-    "case" <i:case_index> "of" <l:Semi<case_list_element>> semicolon otherwisepart <o:statement> "end" => ClosedStatement::Case {
+    <s:@L> "case" <i:case_index> "of" <l:Semi<case_list_element>> semicolon otherwisepart <o:statement> "end" <e:@L> => ClosedStatement::Case {
+        meta: meta(s, e),
         index: i,
         cases: l,
         otherwise: Some(Box::new(o))
     },
-    "case" <i:case_index> "of" <l:Semi<case_list_element>> semicolon otherwisepart <o:statement> ";" "end" => ClosedStatement::Case {
+    <s:@L> "case" <i:case_index> "of" <l:Semi<case_list_element>> semicolon otherwisepart <o:statement> ";" "end" <e:@L> => ClosedStatement::Case {
+        meta: meta(s, e),
         index: i,
         cases: l,
         otherwise: Some(Box::new(o))
@@ -659,9 +824,10 @@ case_index: Expression = {
 };
 
 case_list_element: CaseElement = {
-    <l:Comma<case_constant>> ":" <s:statement> => CaseElement {
+    <s:@L> <l:Comma<case_constant>> ":" <st:statement> <e:@L> => CaseElement {
+        meta: meta(s, e),
         cases: l,
-        s: s
+        s: st
     },
 };
 
@@ -692,8 +858,12 @@ boolean_expression: Expression = {
 };
 
 expression: Expression = {
-    simple_expression => Expression::Simple(<>),
-    <l:simple_expression> <op:relop> <r:simple_expression> => Expression::RelExpr {
+    <s:@L> <se:simple_expression> <e:@L> => Expression::Simple {
+        meta: meta(s, e),
+        value: se
+    },
+    <s:@L> <l:simple_expression> <op:relop> <r:simple_expression> <e:@L> => Expression::RelExpr {
+        meta: meta(s, e),
         lhs: Box::new(l),
         op: op,
         rhs: Box::new(r)
@@ -701,8 +871,12 @@ expression: Expression = {
 };
 
 simple_expression: SimpleExpression = {
-    term => SimpleExpression::Term(<>),
-    <l:simple_expression> <op:addop> <r:term> => SimpleExpression::AddExpr {
+    <s:@L> <t:term> <e:@L> => SimpleExpression::Term {
+        meta: meta(s, e),
+        value: t
+    },
+    <s:@L> <l:simple_expression> <op:addop> <r:term> <e:@L> => SimpleExpression::AddExpr {
+        meta: meta(s, e),
         lhs: Box::new(l),
         op: op,
         rhs: r
@@ -710,8 +884,12 @@ simple_expression: SimpleExpression = {
 };
 
 term: Term = {
-    factor => Term::Factor(<>),
-    <l:term> <op:mulop> <r:factor> => Term::MulExpr {
+    <s:@L> <f:factor> <e:@L> => Term::Factor {
+        meta: meta(s, e),
+        value: f
+    },
+    <s:@L> <l:term> <op:mulop> <r:factor> <e:@L> => Term::MulExpr {
+        meta: meta(s, e),
         lhs: Box::new(l),
         op: op,
         rhs: r
@@ -719,39 +897,76 @@ term: Term = {
 };
 
 factor: Factor = {
-    <s:sign> <f:factor> => Factor::Factor {
-        is_negative: s,
+    <s:@L> <si:sign> <f:factor> <e:@L> => Factor::Factor {
+        meta: meta(s, e),
+        is_negative: si,
         expr: Box::new(f)
     },
-    exponentiation => Factor::Exponentiation(<>),
+    <s:@L> <ex:exponentiation> <e:@L> => Factor::Exponentiation {
+        meta: meta(s, e),
+        value: ex
+    },
 };
 
 exponentiation: Exponentiation = {
-    primary => Exponentiation::Primary(<>),
-    <p:primary> "**" <e:exponentiation> => Exponentiation::Exponent {
+    <s:@L> <p:primary> <e:@L> => Exponentiation::Primary {
+        meta: meta(s, e),
+        value: p
+    },
+    <s:@L> <p:primary> "**" <ex:exponentiation> <e:@L> => Exponentiation::Exponent {
+        meta: meta(s, e),
         base: p,
-        pow: Box::new(e)
+        pow: Box::new(ex)
     },
 };
 
 primary: Primary = {
-    variable_access => Primary::VariableAccess(<>),
-    unsigned_constant => Primary::UnsignedConstant(<>),
+    <s:@L> <va:variable_access> <e:@L> => Primary::VariableAccess {
+        meta: meta(s, e),
+        value: va
+    },
+    <s:@L> <uc:unsigned_constant> <e:@L> => Primary::UnsignedConstant {
+        meta: meta(s, e),
+        value: uc
+    },
     function_designator => <>,
-    set_constructor => Primary::Set(<>),
-    "(" <e:expression> ")" => Primary::Paren(Box::new(e)),
-    "not" <p:primary> => Primary::Not(Box::new(p)),
+    <s:@L> <sc:set_constructor> <e:@L> => Primary::Set {
+        meta: meta(s, e),
+        value: sc
+    },
+    <s:@L> "(" <ex:expression> ")" <e:@L> => Primary::Paren {
+        meta: meta(s, e),
+        value: Box::new(ex)
+    },
+    <s:@L> "not" <p:primary> <e:@L> => Primary::Not {
+        meta: meta(s, e),
+        value: Box::new(p)
+    },
 };
 
 unsigned_constant: UnsignedConstant = {
-    unsigned_number => UnsignedConstant::Number(<>),
-    "string" => UnsignedConstant::String(<>),
-    "nil" => UnsignedConstant::Nil,
+    <s:@L> <un:unsigned_number> <e:@L> => UnsignedConstant::Number {
+        meta: meta(s, e),
+        value: un
+    },
+    <s:@L> <st:"string"> <e:@L> => UnsignedConstant::String {
+        meta: meta(s, e),
+        value: st
+    },
+    <s:@L> "nil" <e:@L> => UnsignedConstant::Nil {
+        meta: meta(s, e),
+    },
 };
 
 unsigned_number: Number = {
-    unsigned_integer => Number::Integer(<>),
-    unsigned_real => Number::Real(<>),
+    <s:@L> <ui:unsigned_integer> <e:@L> => Number::Integer {
+        meta: meta(s, e),
+        value: ui
+    },
+    <s:@L> <ur:unsigned_real> <e:@R> => Number::Real {
+        meta: meta(s, e),
+        value: ur
+    },
 };
 
 unsigned_integer: usize = {
@@ -763,7 +978,8 @@ unsigned_real: f32 = {
 };
 
 function_designator: Primary = {
-    <i:identifier> <p:params> => Primary::FunctionCall {
+    <s:@L> <i:identifier> <p:params> <e:@L> => Primary::FunctionCall {
+        meta: meta(s, e),
         name: i,
         params: p
     },

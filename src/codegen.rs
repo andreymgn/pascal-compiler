@@ -134,7 +134,7 @@ impl Codegen {
         let ids = var.ids.clone();
         let var_typ = var.typ.clone();
         match var_typ {
-            Type::Identifier(i) => {
+            Type::Identifier { meta, value: i } => {
                 let llvmtyp = self.identifier_to_llvmty(&i);
                 for id in ids {
                     let gvar = LLVMAddGlobal(
@@ -144,28 +144,40 @@ impl Codegen {
                     );
                     self.global_varmap.insert(
                         id.to_string(),
-                        VarInfo::new(Type::Identifier(i.to_string()), llvmtyp, gvar),
+                        VarInfo::new(
+                            Type::Identifier {
+                                meta: meta,
+                                value: i.to_string(),
+                            },
+                            llvmtyp,
+                            gvar,
+                        ),
                     );
                     LLVMSetLinkage(gvar, llvm::LLVMLinkage::LLVMCommonLinkage);
                     LLVMSetInitializer(gvar, LLVMConstNull(self.identifier_to_llvmty(&i)));
                 }
             }
-            Type::NewType(nt) => match *nt {
-                NewType::StructuredType(tt) => match &*tt {
-                    StructuredType::Array { index_list, typ } => {
+            Type::NewType { meta: _, value: nt } => match *nt {
+                NewType::StructuredType { meta: _, value: tt } => match &*tt {
+                    StructuredType::Array {
+                        meta,
+                        index_list,
+                        typ,
+                    } => {
                         let t = match *typ.clone() {
-                            Type::Identifier(t) => self.identifier_to_llvmty(&t),
-                            _ => return Err("Array of complex values".to_string()),
+                            Type::Identifier { meta: _, value: t } => self.identifier_to_llvmty(&t),
+                            _ => return Err(format!("Array of complex values at {}", meta)),
                         };
                         let size = match &index_list[0] {
-                            OrdinalType::NewOrdinalType(NewOrdinalType::SubrangeType {
+                            OrdinalType::NewOrdinalType{meta:_,value: NewOrdinalType::SubrangeType {
+                                meta,
                                 low: _, /* consider low to be always 0 */
                                 high,
-                            }) => {
-                                if let Constant::NonString(NonString::Integer(x)) = high {
+                            }} => {
+                                if let Constant::NonString{meta:_, value: NonString::Integer{meta:_, value: x}} = high {
                                     x
                                 } else {
-                                    return Err("Array of non-integer size".to_string());
+                                    return Err(format!("Array of non-integer size at {}", meta));
                                 }
                             },
                             _ => return Err("Arrays with types other than integers as indices are not supported".to_string())
@@ -177,12 +189,17 @@ impl Codegen {
                                 LLVMArrayType(t, *size as u32),
                                 CString::new(id.as_str()).unwrap().as_ptr(),
                             );
-                            let typ = Type::NewType(Box::new(NewType::StructuredType(Box::new(
-                                StructuredType::Array {
-                                    index_list: index_list.clone(),
-                                    typ: typ.clone(),
-                                },
-                            ))));
+                            let typ = Type::NewType {
+                                meta: *meta,
+                                value: Box::new(NewType::StructuredType {
+                                    meta: *meta,
+                                    value: Box::new(StructuredType::Array {
+                                        meta: *meta,
+                                        index_list: index_list.clone(),
+                                        typ: typ.clone(),
+                                    }),
+                                }),
+                            };
                             self.global_varmap
                                 .insert(id, VarInfo::new(typ, llvmtyp, gvar));
                             LLVMSetLinkage(gvar, llvm::LLVMLinkage::LLVMCommonLinkage);
@@ -219,8 +236,16 @@ impl Codegen {
 
     pub unsafe fn gen_statement(&mut self, stmt: Statement) -> Result<LLVMValueRef, String> {
         match stmt {
-            Statement::Open { label: _, s } => self.gen_open_statement(s),
-            Statement::Closed { label: _, s } => self.gen_closed_statement(s),
+            Statement::Open {
+                meta: _,
+                label: _,
+                s,
+            } => self.gen_open_statement(s),
+            Statement::Closed {
+                meta: _,
+                label: _,
+                s,
+            } => self.gen_closed_statement(s),
         }
     }
 
@@ -230,8 +255,12 @@ impl Codegen {
     ) -> Result<LLVMValueRef, String> {
         // for and if
         match stmt {
-            OpenStatement::If(open_if) => self.gen_open_if(open_if),
+            OpenStatement::If {
+                meta: _,
+                value: open_if,
+            } => self.gen_open_if(open_if),
             OpenStatement::For {
+                meta: _,
                 var,
                 init,
                 inc,
@@ -244,7 +273,11 @@ impl Codegen {
 
     pub unsafe fn gen_open_if(&mut self, typ: OpenIf) -> Result<LLVMValueRef, String> {
         match typ {
-            OpenIf::WithoutElse { predicate, then } => {
+            OpenIf::WithoutElse {
+                meta: _,
+                predicate,
+                then,
+            } => {
                 let condition_tmp = self.gen_expression(&predicate)?;
                 let condition = self.val_to_bool(condition_tmp);
 
@@ -271,6 +304,7 @@ impl Codegen {
                 Ok(ptr::null_mut())
             }
             OpenIf::WithElse {
+                meta: _,
                 predicate,
                 then,
                 els,
@@ -308,8 +342,16 @@ impl Codegen {
 
     pub unsafe fn gen_expression(&mut self, e: &Expression) -> Result<LLVMValueRef, String> {
         match e {
-            Expression::RelExpr { lhs, op, rhs } => self.gen_rel_expr(&*lhs, op, &*rhs),
-            Expression::Simple(expr) => self.gen_simple_expr(expr),
+            Expression::RelExpr {
+                meta: _,
+                lhs,
+                op,
+                rhs,
+            } => self.gen_rel_expr(&*lhs, op, &*rhs),
+            Expression::Simple {
+                meta: _,
+                value: expr,
+            } => self.gen_simple_expr(expr),
         }
     }
 
@@ -351,8 +393,13 @@ impl Codegen {
 
     pub unsafe fn gen_simple_expr(&mut self, e: &SimpleExpression) -> Result<LLVMValueRef, String> {
         match e {
-            SimpleExpression::AddExpr { lhs, op, rhs } => self.gen_add_expr(&*lhs, op, &*rhs),
-            SimpleExpression::Term(t) => self.gen_term(t),
+            SimpleExpression::AddExpr {
+                meta: _,
+                lhs,
+                op,
+                rhs,
+            } => self.gen_add_expr(&*lhs, op, &*rhs),
+            SimpleExpression::Term { meta: _, value: t } => self.gen_term(t),
         }
     }
 
@@ -390,8 +437,13 @@ impl Codegen {
 
     pub unsafe fn gen_term(&mut self, e: &Term) -> Result<LLVMValueRef, String> {
         match e {
-            Term::MulExpr { lhs, op, rhs } => self.gen_mul_expr(&*lhs, op, &*rhs),
-            Term::Factor(f) => self.gen_factor(f),
+            Term::MulExpr {
+                meta: _,
+                lhs,
+                op,
+                rhs,
+            } => self.gen_mul_expr(&*lhs, op, &*rhs),
+            Term::Factor { meta: _, value: f } => self.gen_factor(f),
         }
     }
 
@@ -430,8 +482,12 @@ impl Codegen {
 
     pub unsafe fn gen_factor(&mut self, e: &Factor) -> Result<LLVMValueRef, String> {
         match e {
-            Factor::Factor { is_negative, expr } => self.gen_unary(*is_negative, &*expr),
-            Factor::Exponentiation(e) => self.gen_exponentiation(e),
+            Factor::Factor {
+                meta: _,
+                is_negative,
+                expr,
+            } => self.gen_unary(*is_negative, &*expr),
+            Factor::Exponentiation { meta: _, value: e } => self.gen_exponentiation(e),
         }
     }
 
@@ -456,16 +512,16 @@ impl Codegen {
         e: &Exponentiation,
     ) -> Result<LLVMValueRef, String> {
         match e {
-            Exponentiation::Primary(p) => self.gen_primary(p),
+            Exponentiation::Primary { meta: _, value: p } => self.gen_primary(p),
             _ => Err(format!("Operation {:?} not supported", e)),
         }
     }
 
     pub unsafe fn gen_primary(&mut self, p: &Primary) -> Result<LLVMValueRef, String> {
         match p {
-            Primary::VariableAccess(va) => self.gen_variable_access(&va),
-            Primary::UnsignedConstant(uc) => self.gen_unsigned_constant(&uc),
-            Primary::Paren(e) => self.gen_expression(&*e),
+            Primary::VariableAccess { meta: _, value: va } => self.gen_variable_access(&va),
+            Primary::UnsignedConstant { meta: _, value: uc } => self.gen_unsigned_constant(&uc),
+            Primary::Paren { meta: _, value: e } => self.gen_expression(&*e),
             _ => Err(format!("Operation {:?} not supported", p)),
         }
     }
@@ -475,19 +531,27 @@ impl Codegen {
         v: &VariableAccess,
     ) -> Result<LLVMValueRef, String> {
         match v {
-            VariableAccess::Identifier(i) => {
+            VariableAccess::Identifier { meta, value: i } => {
                 if let Some(varinfo) = self.global_varmap.get(i.as_str()) {
                     return Ok(varinfo.clone().llvm_val);
                 }
-                Err("Use of undeclared variable".to_string())
+                Err(format!("Use of undeclared variable {} at {}", i, meta))
             }
-            VariableAccess::Indexed { var, index } => {
+            VariableAccess::Indexed {
+                meta: _,
+                var,
+                index,
+            } => {
                 let i = self.gen_expression(&*index)?;
                 let v = self.gen_variable_access(var)?;
-                println!("{:?}", index);
                 let i_load = self.load_if_needed(i);
-                let zero =
-                    self.gen_unsigned_constant(&UnsignedConstant::Number(Number::Integer(0)))?;
+                let zero = self.gen_unsigned_constant(&UnsignedConstant::Number {
+                    meta: meta((0, 0), (0, 0)),
+                    value: Number::Integer {
+                        meta: meta((0, 0), (0, 0)),
+                        value: 0,
+                    },
+                })?;
                 let r = LLVMBuildGEP(
                     self.builder,
                     v,
@@ -508,16 +572,18 @@ impl Codegen {
         c: &UnsignedConstant,
     ) -> Result<LLVMValueRef, String> {
         match c {
-            UnsignedConstant::Number(n) => match n {
-                Number::Integer(i) => Ok(LLVMConstInt(LLVMInt32Type(), *i as u64, 0)),
-                Number::Real(r) => Ok(LLVMConstReal(LLVMFloatType(), *r as f64)),
+            UnsignedConstant::Number { meta: _, value: n } => match n {
+                Number::Integer { meta: _, value: i } => {
+                    Ok(LLVMConstInt(LLVMInt32Type(), *i as u64, 0))
+                }
+                Number::Real { meta: _, value: r } => Ok(LLVMConstReal(LLVMFloatType(), *r as f64)),
             },
-            UnsignedConstant::String(s) => Ok(LLVMBuildGlobalStringPtr(
+            UnsignedConstant::String { meta: _, value: s } => Ok(LLVMBuildGlobalStringPtr(
                 self.builder,
                 CString::new(s.as_str()).unwrap().as_ptr(),
                 CString::new("str").unwrap().as_ptr(),
             )),
-            UnsignedConstant::Nil => Err("No nil".to_string()),
+            UnsignedConstant::Nil { meta } => Err(format!("No nil allowed yet at {}", meta)),
         }
     }
 
@@ -542,7 +608,11 @@ impl Codegen {
         LLVMBuildBr(self.builder, bb_init);
         LLVMPositionBuilderAtEnd(self.builder, bb_init);
         self.gen_assignment(Assignment {
-            var: VariableAccess::Identifier(var.clone()),
+            meta: meta((0, 0), (0, 0)),
+            var: VariableAccess::Identifier {
+                meta: meta((0, 0), (0, 0)),
+                value: var.clone(),
+            },
             rhs: init,
         })?;
 
@@ -570,33 +640,109 @@ impl Codegen {
         LLVMPositionBuilderAtEnd(self.builder, bb_step);
         if is_inc {
             self.gen_assignment(Assignment {
-                var: VariableAccess::Identifier(var.clone()),
-                rhs: Expression::Simple(SimpleExpression::AddExpr {
-                    lhs: Box::new(SimpleExpression::Term(Term::Factor(
-                        Factor::Exponentiation(Exponentiation::Primary(Primary::VariableAccess(
-                            VariableAccess::Identifier(var),
-                        ))),
-                    ))),
-                    op: AddOp::Add,
-                    rhs: Term::Factor(Factor::Exponentiation(Exponentiation::Primary(
-                        Primary::UnsignedConstant(UnsignedConstant::Number(Number::Integer(1))),
-                    ))),
-                }),
+                meta: meta((0, 0), (0, 0)),
+                var: VariableAccess::Identifier {
+                    meta: meta((0, 0), (0, 0)),
+                    value: var.clone(),
+                },
+                rhs: Expression::Simple {
+                    meta: meta((0, 0), (0, 0)),
+                    value: SimpleExpression::AddExpr {
+                        meta: meta((0, 0), (0, 0)),
+                        lhs: Box::new(SimpleExpression::Term {
+                            meta: meta((0, 0), (0, 0)),
+                            value: Term::Factor {
+                                meta: meta((0, 0), (0, 0)),
+                                value: Factor::Exponentiation {
+                                    meta: meta((0, 0), (0, 0)),
+                                    value: Exponentiation::Primary {
+                                        meta: meta((0, 0), (0, 0)),
+                                        value: Primary::VariableAccess {
+                                            meta: meta((0, 0), (0, 0)),
+                                            value: VariableAccess::Identifier {
+                                                meta: meta((0, 0), (0, 0)),
+                                                value: var,
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        }),
+                        op: AddOp::Add,
+                        rhs: Term::Factor {
+                            meta: meta((0, 0), (0, 0)),
+                            value: Factor::Exponentiation {
+                                meta: meta((0, 0), (0, 0)),
+                                value: Exponentiation::Primary {
+                                    meta: meta((0, 0), (0, 0)),
+                                    value: Primary::UnsignedConstant {
+                                        meta: meta((0, 0), (0, 0)),
+                                        value: UnsignedConstant::Number {
+                                            meta: meta((0, 0), (0, 0)),
+                                            value: Number::Integer {
+                                                meta: meta((0, 0), (0, 0)),
+                                                value: 1,
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
             })?;
         } else {
             self.gen_assignment(Assignment {
-                var: VariableAccess::Identifier(var.clone()),
-                rhs: Expression::Simple(SimpleExpression::AddExpr {
-                    lhs: Box::new(SimpleExpression::Term(Term::Factor(
-                        Factor::Exponentiation(Exponentiation::Primary(Primary::VariableAccess(
-                            VariableAccess::Identifier(var),
-                        ))),
-                    ))),
-                    op: AddOp::Sub,
-                    rhs: Term::Factor(Factor::Exponentiation(Exponentiation::Primary(
-                        Primary::UnsignedConstant(UnsignedConstant::Number(Number::Integer(1))),
-                    ))),
-                }),
+                meta: meta((0, 0), (0, 0)),
+                var: VariableAccess::Identifier {
+                    meta: meta((0, 0), (0, 0)),
+                    value: var.clone(),
+                },
+                rhs: Expression::Simple {
+                    meta: meta((0, 0), (0, 0)),
+                    value: SimpleExpression::AddExpr {
+                        meta: meta((0, 0), (0, 0)),
+                        lhs: Box::new(SimpleExpression::Term {
+                            meta: meta((0, 0), (0, 0)),
+                            value: Term::Factor {
+                                meta: meta((0, 0), (0, 0)),
+                                value: Factor::Exponentiation {
+                                    meta: meta((0, 0), (0, 0)),
+                                    value: Exponentiation::Primary {
+                                        meta: meta((0, 0), (0, 0)),
+                                        value: Primary::VariableAccess {
+                                            meta: meta((0, 0), (0, 0)),
+                                            value: VariableAccess::Identifier {
+                                                meta: meta((0, 0), (0, 0)),
+                                                value: var,
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        }),
+                        op: AddOp::Sub,
+                        rhs: Term::Factor {
+                            meta: meta((0, 0), (0, 0)),
+                            value: Factor::Exponentiation {
+                                meta: meta((0, 0), (0, 0)),
+                                value: Exponentiation::Primary {
+                                    meta: meta((0, 0), (0, 0)),
+                                    value: Primary::UnsignedConstant {
+                                        meta: meta((0, 0), (0, 0)),
+                                        value: UnsignedConstant::Number {
+                                            meta: meta((0, 0), (0, 0)),
+                                            value: Number::Integer {
+                                                meta: meta((0, 0), (0, 0)),
+                                                value: 1,
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
             })?;
         }
         LLVMBuildBr(self.builder, bb_test);
@@ -611,17 +757,25 @@ impl Codegen {
     ) -> Result<LLVMValueRef, String> {
         // assignment, empty, for, funcall
         match stmt {
-            ClosedStatement::Assignment(a) => self.gen_assignment(a),
+            ClosedStatement::Assignment { meta: _, value: a } => self.gen_assignment(a),
             ClosedStatement::For {
+                meta: _,
                 var,
                 init,
                 inc,
                 fin,
                 s,
             } => self.gen_for(var, init, inc, fin, *s),
-            ClosedStatement::Procedure { id, params } => self.gen_function_call(id, &params),
-            ClosedStatement::Compound(stmts) => self.gen_statements(stmts),
-            ClosedStatement::Empty => Ok(ptr::null_mut()),
+            ClosedStatement::Procedure {
+                meta: _,
+                id,
+                params,
+            } => self.gen_function_call(id, &params),
+            ClosedStatement::Compound {
+                meta: _,
+                value: stmts,
+            } => self.gen_statements(stmts),
+            ClosedStatement::Empty { meta: _ } => Ok(ptr::null_mut()),
             _ => Err(format!("Statement {:?} not supported", stmt)),
         }
     }
