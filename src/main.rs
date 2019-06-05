@@ -55,9 +55,10 @@ fn typecheck(filename: &str) {
     let program = pascal::programParser::new()
         .parse(lexer::Lexer::new(&contents))
         .unwrap();
-    let symbols = semantic::get_symbols(program);
-    let errs = semantic::check_variable_types(symbols);
-    println!("{:#?}", errs);
+    match semantic::get_symbols(program) {
+        Ok(symbols) => println!("{:#?}", semantic::check_variable_types(symbols)),
+        Err(es) => println!("Errors while building symbols table: {:#?}", es),
+    }
 }
 
 fn codegen(filename: &str) {

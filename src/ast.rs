@@ -208,13 +208,13 @@ pub enum ProcedureDecl {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash, Eq, PartialEq)]
 pub struct ProcedureHeading {
     pub name: Identifier,
     pub params: Vec<FormalParameter>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash, Eq, PartialEq)]
 pub enum FormalParameter {
     Value {
         lhs: Vec<Identifier>,
@@ -244,7 +244,7 @@ pub enum FunctionDecl {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash, Eq, PartialEq)]
 pub struct FunctionHeading {
     pub name: Identifier,
     pub params: Vec<FormalParameter>,
