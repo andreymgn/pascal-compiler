@@ -103,7 +103,7 @@ impl Codegen {
         Ok(())
     }
 
-    pub unsafe fn gen_global_constants(
+    unsafe fn gen_global_constants(
         &mut self,
         consts: HashSet<semantic::Const>,
     ) -> Result<(), String> {
@@ -113,7 +113,7 @@ impl Codegen {
         Ok(())
     }
 
-    pub unsafe fn gen_constant(&mut self, constant: semantic::Const) -> Result<(), String> {
+    unsafe fn gen_constant(&mut self, constant: semantic::Const) -> Result<(), String> {
         use semantic::ConstType;
         let (llvm_typ, var, var_typ) = match constant.variant {
             ConstType::Integer(i) => {
@@ -198,7 +198,7 @@ impl Codegen {
         Ok(())
     }
 
-    pub unsafe fn gen_global_variables(
+    unsafe fn gen_global_variables(
         &mut self,
         vars: HashSet<semantic::Variable>,
     ) -> Result<(), String> {
@@ -208,14 +208,14 @@ impl Codegen {
         Ok(())
     }
 
-    pub unsafe fn gen_proc_decls(&mut self, procs: HashSet<semantic::Proc>) -> Result<(), String> {
+    unsafe fn gen_proc_decls(&mut self, procs: HashSet<semantic::Proc>) -> Result<(), String> {
         for p in procs.into_iter() {
             self.gen_proc_decl(p)?;
         }
         Ok(())
     }
 
-    pub unsafe fn gen_proc_decl(&mut self, proc: semantic::Proc) -> Result<(), String> {
+    unsafe fn gen_proc_decl(&mut self, proc: semantic::Proc) -> Result<(), String> {
         let mut param_types = vec![];
         for p in &proc.params {
             match p {
@@ -375,7 +375,7 @@ impl Codegen {
         Ok(())
     }
 
-    pub unsafe fn identifier_to_llvmty(&mut self, id: &str) -> LLVMTypeRef {
+    unsafe fn identifier_to_llvmty(&mut self, id: &str) -> LLVMTypeRef {
         match id {
             "integer" => LLVMInt32Type(),
             "smallint" => LLVMInt16Type(),
@@ -388,14 +388,14 @@ impl Codegen {
         }
     }
 
-    pub unsafe fn gen_statements(&mut self, stmts: Vec<Statement>) -> Result<LLVMValueRef, String> {
+    unsafe fn gen_statements(&mut self, stmts: Vec<Statement>) -> Result<LLVMValueRef, String> {
         for s in stmts {
             self.gen_statement(s)?;
         }
         Ok(ptr::null_mut())
     }
 
-    pub unsafe fn gen_statement(&mut self, stmt: Statement) -> Result<LLVMValueRef, String> {
+    unsafe fn gen_statement(&mut self, stmt: Statement) -> Result<LLVMValueRef, String> {
         match stmt {
             Statement::Open {
                 meta: _,
@@ -410,10 +410,7 @@ impl Codegen {
         }
     }
 
-    pub unsafe fn gen_open_statement(
-        &mut self,
-        stmt: OpenStatement,
-    ) -> Result<LLVMValueRef, String> {
+    unsafe fn gen_open_statement(&mut self, stmt: OpenStatement) -> Result<LLVMValueRef, String> {
         // for and if
         match stmt {
             OpenStatement::If {
@@ -432,7 +429,7 @@ impl Codegen {
         }
     }
 
-    pub unsafe fn gen_open_if(&mut self, typ: OpenIf) -> Result<LLVMValueRef, String> {
+    unsafe fn gen_open_if(&mut self, typ: OpenIf) -> Result<LLVMValueRef, String> {
         match typ {
             OpenIf::WithoutElse {
                 meta: _,
@@ -501,7 +498,7 @@ impl Codegen {
         }
     }
 
-    pub unsafe fn gen_expression(&mut self, e: &Expression) -> Result<LLVMValueRef, String> {
+    unsafe fn gen_expression(&mut self, e: &Expression) -> Result<LLVMValueRef, String> {
         match e {
             Expression::RelExpr {
                 meta: _,
@@ -516,7 +513,7 @@ impl Codegen {
         }
     }
 
-    pub unsafe fn gen_rel_expr(
+    unsafe fn gen_rel_expr(
         &mut self,
         lhs: &SimpleExpression,
         op: &RelOp,
@@ -552,7 +549,7 @@ impl Codegen {
         }
     }
 
-    pub unsafe fn gen_simple_expr(&mut self, e: &SimpleExpression) -> Result<LLVMValueRef, String> {
+    unsafe fn gen_simple_expr(&mut self, e: &SimpleExpression) -> Result<LLVMValueRef, String> {
         match e {
             SimpleExpression::AddExpr {
                 meta: _,
@@ -564,7 +561,7 @@ impl Codegen {
         }
     }
 
-    pub unsafe fn gen_add_expr(
+    unsafe fn gen_add_expr(
         &mut self,
         lhs: &SimpleExpression,
         op: &AddOp,
@@ -596,7 +593,7 @@ impl Codegen {
         }
     }
 
-    pub unsafe fn gen_term(&mut self, e: &Term) -> Result<LLVMValueRef, String> {
+    unsafe fn gen_term(&mut self, e: &Term) -> Result<LLVMValueRef, String> {
         match e {
             Term::MulExpr {
                 meta: _,
@@ -608,7 +605,7 @@ impl Codegen {
         }
     }
 
-    pub unsafe fn gen_mul_expr(
+    unsafe fn gen_mul_expr(
         &mut self,
         lhs: &Term,
         op: &MulOp,
@@ -641,7 +638,7 @@ impl Codegen {
         }
     }
 
-    pub unsafe fn gen_factor(&mut self, e: &Factor) -> Result<LLVMValueRef, String> {
+    unsafe fn gen_factor(&mut self, e: &Factor) -> Result<LLVMValueRef, String> {
         match e {
             Factor::Factor {
                 meta: _,
@@ -652,11 +649,7 @@ impl Codegen {
         }
     }
 
-    pub unsafe fn gen_unary(
-        &mut self,
-        is_negative: bool,
-        f: &Factor,
-    ) -> Result<LLVMValueRef, String> {
+    unsafe fn gen_unary(&mut self, is_negative: bool, f: &Factor) -> Result<LLVMValueRef, String> {
         let v = self.gen_factor(f);
         if is_negative {
             return Ok(LLVMBuildNeg(
@@ -668,17 +661,14 @@ impl Codegen {
         v
     }
 
-    pub unsafe fn gen_exponentiation(
-        &mut self,
-        e: &Exponentiation,
-    ) -> Result<LLVMValueRef, String> {
+    unsafe fn gen_exponentiation(&mut self, e: &Exponentiation) -> Result<LLVMValueRef, String> {
         match e {
             Exponentiation::Primary { meta: _, value: p } => self.gen_primary(p),
             _ => Err(format!("Operation {:?} not supported", e)),
         }
     }
 
-    pub unsafe fn gen_primary(&mut self, p: &Primary) -> Result<LLVMValueRef, String> {
+    unsafe fn gen_primary(&mut self, p: &Primary) -> Result<LLVMValueRef, String> {
         match p {
             Primary::VariableAccess { meta: _, value: va } => self.gen_variable_access(&va, false),
             Primary::UnsignedConstant { meta: _, value: uc } => self.gen_unsigned_constant(&uc),
@@ -687,7 +677,7 @@ impl Codegen {
         }
     }
 
-    pub unsafe fn gen_variable_access(
+    unsafe fn gen_variable_access(
         &mut self,
         v: &VariableAccess,
         modification: bool,
@@ -735,7 +725,7 @@ impl Codegen {
         }
     }
 
-    pub unsafe fn gen_unsigned_constant(
+    unsafe fn gen_unsigned_constant(
         &mut self,
         c: &UnsignedConstant,
     ) -> Result<LLVMValueRef, String> {
@@ -753,7 +743,7 @@ impl Codegen {
         }
     }
 
-    pub unsafe fn gen_for(
+    unsafe fn gen_for(
         &mut self,
         var: Identifier,
         init: Expression,
@@ -925,7 +915,7 @@ impl Codegen {
         })
     }
 
-    pub unsafe fn gen_closed_statement(
+    unsafe fn gen_closed_statement(
         &mut self,
         stmt: ClosedStatement,
     ) -> Result<LLVMValueRef, String> {
@@ -954,7 +944,7 @@ impl Codegen {
         }
     }
 
-    pub unsafe fn gen_assignment(&mut self, a: Assignment) -> Result<LLVMValueRef, String> {
+    unsafe fn gen_assignment(&mut self, a: Assignment) -> Result<LLVMValueRef, String> {
         let lhs = self.gen_variable_access(&a.var, true)?;
         let rhs = self.gen_expression(&a.rhs)?;
         let rhs_v = self.load_if_needed(rhs);
@@ -962,7 +952,7 @@ impl Codegen {
         Ok(r)
     }
 
-    pub unsafe fn gen_function_call(
+    unsafe fn gen_function_call(
         &mut self,
         id: Identifier,
         params: &Vec<Parameter>,
