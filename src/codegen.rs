@@ -1,8 +1,9 @@
 use crate::ast::*;
+use crate::semantic;
 
 extern crate libc;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::CString;
 use std::ptr;
 
@@ -20,14 +21,16 @@ struct VarInfo {
     typ: Type,
     llvm_typ: LLVMTypeRef,
     llvm_val: LLVMValueRef,
+    is_const: bool,
 }
 
 impl VarInfo {
-    fn new(typ: Type, llvm_typ: LLVMTypeRef, llvm_val: LLVMValueRef) -> VarInfo {
+    fn new(typ: Type, llvm_typ: LLVMTypeRef, llvm_val: LLVMValueRef, is_const: bool) -> VarInfo {
         VarInfo {
-            typ: typ,
-            llvm_typ: llvm_typ,
-            llvm_val: llvm_val,
+            typ,
+            llvm_typ,
+            llvm_val,
+            is_const,
         }
     }
 }
@@ -38,7 +41,6 @@ pub struct Codegen {
     builder: LLVMBuilderRef,
     global_varmap: HashMap<String, VarInfo>,
     cur_func: Option<LLVMValueRef>,
-    printf: LLVMValueRef,
 }
 
 impl Codegen {
@@ -53,7 +55,7 @@ impl Codegen {
 
         let c_mod_name = CString::new(name).unwrap();
         let module = LLVMModuleCreateWithNameInContext(c_mod_name.as_ptr(), context);
-        let global_varmap = HashMap::new();
+        let mut global_varmap = HashMap::new();
 
         let mut ee = 0 as llvm::execution_engine::LLVMExecutionEngineRef;
         let mut error = 0 as *mut i8;
@@ -72,6 +74,18 @@ impl Codegen {
             1,
         );
         let printf = LLVMAddFunction(module, CString::new("printf").unwrap().as_ptr(), printf_typ);
+        global_varmap.insert(
+            "printf".to_string(),
+            VarInfo::new(
+                Type::Identifier {
+                    meta: Default::default(),
+                    value: "internal_fn".to_string(),
+                },
+                printf_typ,
+                printf,
+                true,
+            ),
+        );
 
         Codegen {
             context: context,
@@ -79,8 +93,169 @@ impl Codegen {
             builder: LLVMCreateBuilderInContext(context),
             global_varmap: global_varmap,
             cur_func: None,
-            printf: printf,
         }
+    }
+
+    pub unsafe fn populate_global(&mut self, symbols: semantic::Scope) -> Result<(), String> {
+        self.gen_global_constants(symbols.consts)?;
+        self.gen_global_variables(symbols.vars)?;
+        self.gen_proc_decls(symbols.procs)?;
+        Ok(())
+    }
+
+    pub unsafe fn gen_global_constants(
+        &mut self,
+        consts: HashSet<semantic::Const>,
+    ) -> Result<(), String> {
+        for c in consts {
+            self.gen_constant(c)?;
+        }
+        Ok(())
+    }
+
+    pub unsafe fn gen_constant(&mut self, constant: semantic::Const) -> Result<(), String> {
+        use semantic::ConstType;
+        let (llvm_typ, var, var_typ) = match constant.variant {
+            ConstType::Integer(i) => {
+                let llvm_typ = LLVMInt32Type();
+                let gvar = LLVMAddGlobal(
+                    self.module,
+                    llvm_typ,
+                    CString::new(constant.name.as_str()).unwrap().as_ptr(),
+                );
+                LLVMSetInitializer(gvar, LLVMConstInt(llvm_typ, i as u64, 0));
+                (
+                    llvm_typ,
+                    gvar,
+                    Type::Identifier {
+                        meta: Default::default(),
+                        value: "integer".to_string(),
+                    },
+                )
+            }
+            ConstType::Real(r) => {
+                let llvm_typ = LLVMFloatType();
+                let gvar = LLVMAddGlobal(
+                    self.module,
+                    llvm_typ,
+                    CString::new(constant.name.as_str()).unwrap().as_ptr(),
+                );
+                LLVMSetInitializer(gvar, LLVMConstReal(llvm_typ, r as f64));
+                (
+                    llvm_typ,
+                    gvar,
+                    Type::Identifier {
+                        meta: Default::default(),
+                        value: "real".to_string(),
+                    },
+                )
+            }
+            ConstType::String(_) => {
+                return Err("Strings aren't working".to_string());
+                // let len = (s.len()) as u32;
+                // let llvm_typ = LLVMArrayType(LLVMInt8Type(), len);
+                // let cstr = CString::new(s.as_str()).unwrap();
+                // let gvar = LLVMBuildGlobalStringPtr(
+                //     self.builder,
+                //     cstr.as_ptr(),
+                //     CString::new(constant.name.as_str()).unwrap().as_ptr(),
+                // );
+                // (
+                //     llvm_typ,
+                //     gvar,
+                //     Type::Identifier {
+                //         meta: Default::default(),
+                //         value: "const_str".to_string(),
+                //     },
+                // )
+            }
+            ConstType::Identifier(i) => match self.global_varmap.get(&i) {
+                Some(var) => {
+                    let llvm_typ = var.llvm_typ;
+                    let var_value = var.llvm_val;
+                    let gvar = LLVMAddGlobal(
+                        self.module,
+                        llvm_typ,
+                        CString::new(constant.name.as_str()).unwrap().as_ptr(),
+                    );
+                    LLVMSetInitializer(gvar, var_value);
+                    (llvm_typ, gvar, var.typ.clone())
+                }
+                None => {
+                    return Err(format!(
+                        "Constant {} refers to undefined constant {}",
+                        constant.name, i
+                    ))
+                }
+            },
+            ConstType::Nil => return Err("Nil not supported".to_string()),
+        };
+        LLVMSetGlobalConstant(var, 1);
+        self.global_varmap.insert(
+            constant.name.to_string(),
+            VarInfo::new(var_typ, llvm_typ, var, true),
+        );
+        Ok(())
+    }
+
+    pub unsafe fn gen_global_variables(
+        &mut self,
+        vars: HashSet<semantic::Variable>,
+    ) -> Result<(), String> {
+        for v in vars.into_iter() {
+            self.gen_variable_decl(v)?;
+        }
+        Ok(())
+    }
+
+    pub unsafe fn gen_proc_decls(&mut self, procs: HashSet<semantic::Proc>) -> Result<(), String> {
+        for p in procs.into_iter() {
+            self.gen_proc_decl(p)?;
+        }
+        Ok(())
+    }
+
+    pub unsafe fn gen_proc_decl(&mut self, proc: semantic::Proc) -> Result<(), String> {
+        let mut param_types = vec![];
+        for p in &proc.params {
+            match p {
+                FormalParameter::Value { meta: _, lhs, rhs } => {
+                    for _ in lhs {
+                        param_types.push(self.identifier_to_llvmty(rhs));
+                    }
+                }
+                _ => return Err(format!("Unsupported parameter type {:?}", p)),
+            };
+        }
+        let ret_type = if let Some(t) = proc.ret {
+            self.identifier_to_llvmty(&t)
+        } else {
+            LLVMVoidType()
+        };
+        let llvm_typ = LLVMFunctionType(
+            ret_type,
+            param_types.as_mut_slice().as_mut_ptr(),
+            param_types.len() as u32,
+            0,
+        );
+        let func = LLVMAddFunction(
+            self.module,
+            CString::new(proc.name.clone()).unwrap().as_ptr(),
+            llvm_typ,
+        );
+        self.global_varmap.insert(
+            proc.name.clone(),
+            VarInfo::new(
+                Type::Identifier {
+                    meta: Default::default(),
+                    value: "user_fn".to_string(),
+                },
+                llvm_typ,
+                func,
+                true,
+            ),
+        );
+        Ok(())
     }
 
     pub unsafe fn write_llvm_bitcode_to_file(&mut self, filename: &str) {
@@ -97,8 +272,6 @@ impl Codegen {
     }
 
     unsafe fn gen_program(&mut self, p: Program) -> Result<(), String> {
-        self.gen_variable_decls(p.block.variable_decls)?;
-
         let func = LLVMAddFunction(
             self.module,
             CString::new("main").unwrap().as_ptr(),
@@ -123,39 +296,29 @@ impl Codegen {
         Ok(())
     }
 
-    unsafe fn gen_variable_decls(&mut self, vars: Vec<VariableDecl>) -> Result<(), String> {
-        for v in vars.into_iter() {
-            self.gen_variable_decl(v)?;
-        }
-        Ok(())
-    }
-
-    unsafe fn gen_variable_decl(&mut self, var: VariableDecl) -> Result<(), String> {
-        let ids = var.ids.clone();
-        let var_typ = var.typ.clone();
-        match var_typ {
+    unsafe fn gen_variable_decl(&mut self, var: semantic::Variable) -> Result<(), String> {
+        match var.typ {
             Type::Identifier { meta, value: i } => {
-                let llvmtyp = self.identifier_to_llvmty(&i);
-                for id in ids {
-                    let gvar = LLVMAddGlobal(
-                        self.module,
-                        self.identifier_to_llvmty(&i),
-                        CString::new(id.as_str()).unwrap().as_ptr(),
-                    );
-                    self.global_varmap.insert(
-                        id.to_string(),
-                        VarInfo::new(
-                            Type::Identifier {
-                                meta: meta,
-                                value: i.to_string(),
-                            },
-                            llvmtyp,
-                            gvar,
-                        ),
-                    );
-                    LLVMSetLinkage(gvar, llvm::LLVMLinkage::LLVMCommonLinkage);
-                    LLVMSetInitializer(gvar, LLVMConstNull(self.identifier_to_llvmty(&i)));
-                }
+                let llvm_typ = self.identifier_to_llvmty(&i);
+                let gvar = LLVMAddGlobal(
+                    self.module,
+                    llvm_typ,
+                    CString::new(var.name.as_str()).unwrap().as_ptr(),
+                );
+                self.global_varmap.insert(
+                    var.name.to_string(),
+                    VarInfo::new(
+                        Type::Identifier {
+                            meta: meta,
+                            value: i.to_string(),
+                        },
+                        llvm_typ,
+                        gvar,
+                        false,
+                    ),
+                );
+                LLVMSetLinkage(gvar, llvm::LLVMLinkage::LLVMCommonLinkage);
+                LLVMSetInitializer(gvar, LLVMConstNull(self.identifier_to_llvmty(&i)));
             }
             Type::NewType { meta: _, value: nt } => match *nt {
                 NewType::StructuredType { meta: _, value: tt } => match &*tt {
@@ -182,29 +345,27 @@ impl Codegen {
                             },
                             _ => return Err("Arrays with types other than integers as indices are not supported".to_string())
                         };
-                        let llvmtyp = LLVMArrayType(t, *size as u32);
-                        for id in var.ids {
-                            let gvar = LLVMAddGlobal(
-                                self.module,
-                                LLVMArrayType(t, *size as u32),
-                                CString::new(id.as_str()).unwrap().as_ptr(),
-                            );
-                            let typ = Type::NewType {
+                        let llvm_typ = LLVMArrayType(t, *size as u32);
+                        let gvar = LLVMAddGlobal(
+                            self.module,
+                            llvm_typ,
+                            CString::new(var.name.as_str()).unwrap().as_ptr(),
+                        );
+                        let typ = Type::NewType {
+                            meta: *meta,
+                            value: Box::new(NewType::StructuredType {
                                 meta: *meta,
-                                value: Box::new(NewType::StructuredType {
+                                value: Box::new(StructuredType::Array {
                                     meta: *meta,
-                                    value: Box::new(StructuredType::Array {
-                                        meta: *meta,
-                                        index_list: index_list.clone(),
-                                        typ: typ.clone(),
-                                    }),
+                                    index_list: index_list.clone(),
+                                    typ: typ.clone(),
                                 }),
-                            };
-                            self.global_varmap
-                                .insert(id, VarInfo::new(typ, llvmtyp, gvar));
-                            LLVMSetLinkage(gvar, llvm::LLVMLinkage::LLVMCommonLinkage);
-                            LLVMSetInitializer(gvar, LLVMConstNull(LLVMArrayType(t, *size as u32)));
-                        }
+                            }),
+                        };
+                        self.global_varmap
+                            .insert(var.name, VarInfo::new(typ, llvm_typ, gvar, false));
+                        LLVMSetLinkage(gvar, llvm::LLVMLinkage::LLVMCommonLinkage);
+                        LLVMSetInitializer(gvar, LLVMConstNull(LLVMArrayType(t, *size as u32)));
                     }
                     _ => return Err("Types harder than arrays are not supported".to_string()),
                 },
@@ -214,8 +375,8 @@ impl Codegen {
         Ok(())
     }
 
-    pub unsafe fn identifier_to_llvmty(&mut self, id: &String) -> LLVMTypeRef {
-        match id.as_ref() {
+    pub unsafe fn identifier_to_llvmty(&mut self, id: &str) -> LLVMTypeRef {
+        match id {
             "integer" => LLVMInt32Type(),
             "smallint" => LLVMInt16Type(),
             "longint" => LLVMInt64Type(),
@@ -519,7 +680,7 @@ impl Codegen {
 
     pub unsafe fn gen_primary(&mut self, p: &Primary) -> Result<LLVMValueRef, String> {
         match p {
-            Primary::VariableAccess { meta: _, value: va } => self.gen_variable_access(&va),
+            Primary::VariableAccess { meta: _, value: va } => self.gen_variable_access(&va, false),
             Primary::UnsignedConstant { meta: _, value: uc } => self.gen_unsigned_constant(&uc),
             Primary::Paren { meta: _, value: e } => self.gen_expression(&*e),
             _ => Err(format!("Operation {:?} not supported", p)),
@@ -529,10 +690,17 @@ impl Codegen {
     pub unsafe fn gen_variable_access(
         &mut self,
         v: &VariableAccess,
+        modification: bool,
     ) -> Result<LLVMValueRef, String> {
         match v {
             VariableAccess::Identifier { meta, value: i } => {
                 if let Some(varinfo) = self.global_varmap.get(i.as_str()) {
+                    if modification && varinfo.is_const {
+                        return Err(format!(
+                            "Attempt to modify constant variable {} at {}",
+                            i, meta
+                        ));
+                    }
                     return Ok(varinfo.clone().llvm_val);
                 }
                 Err(format!("Use of undeclared variable {} at {}", i, meta))
@@ -543,12 +711,12 @@ impl Codegen {
                 index,
             } => {
                 let i = self.gen_expression(&*index)?;
-                let v = self.gen_variable_access(var)?;
+                let v = self.gen_variable_access(var, modification)?;
                 let i_load = self.load_if_needed(i);
                 let zero = self.gen_unsigned_constant(&UnsignedConstant::Number {
-                    meta: meta((0, 0), (0, 0)),
+                    meta: Default::default(),
                     value: Number::Integer {
-                        meta: meta((0, 0), (0, 0)),
+                        meta: Default::default(),
                         value: 0,
                     },
                 })?;
@@ -578,11 +746,9 @@ impl Codegen {
                 }
                 Number::Real { meta: _, value: r } => Ok(LLVMConstReal(LLVMFloatType(), *r as f64)),
             },
-            UnsignedConstant::String { meta: _, value: s } => Ok(LLVMBuildGlobalStringPtr(
-                self.builder,
-                CString::new(s.as_str()).unwrap().as_ptr(),
-                CString::new("str").unwrap().as_ptr(),
-            )),
+            UnsignedConstant::String { meta: _, value: _ } => {
+                Err("Strings aren't working".to_string())
+            }
             UnsignedConstant::Nil { meta } => Err(format!("No nil allowed yet at {}", meta)),
         }
     }
@@ -608,9 +774,9 @@ impl Codegen {
         LLVMBuildBr(self.builder, bb_init);
         LLVMPositionBuilderAtEnd(self.builder, bb_init);
         self.gen_assignment(Assignment {
-            meta: meta((0, 0), (0, 0)),
+            meta: Default::default(),
             var: VariableAccess::Identifier {
-                meta: meta((0, 0), (0, 0)),
+                meta: Default::default(),
                 value: var.clone(),
             },
             rhs: init,
@@ -639,116 +805,124 @@ impl Codegen {
         // step
         LLVMPositionBuilderAtEnd(self.builder, bb_step);
         if is_inc {
-            self.gen_assignment(Assignment {
-                meta: meta((0, 0), (0, 0)),
-                var: VariableAccess::Identifier {
-                    meta: meta((0, 0), (0, 0)),
-                    value: var.clone(),
-                },
-                rhs: Expression::Simple {
-                    meta: meta((0, 0), (0, 0)),
-                    value: SimpleExpression::AddExpr {
-                        meta: meta((0, 0), (0, 0)),
-                        lhs: Box::new(SimpleExpression::Term {
-                            meta: meta((0, 0), (0, 0)),
-                            value: Term::Factor {
-                                meta: meta((0, 0), (0, 0)),
-                                value: Factor::Exponentiation {
-                                    meta: meta((0, 0), (0, 0)),
-                                    value: Exponentiation::Primary {
-                                        meta: meta((0, 0), (0, 0)),
-                                        value: Primary::VariableAccess {
-                                            meta: meta((0, 0), (0, 0)),
-                                            value: VariableAccess::Identifier {
-                                                meta: meta((0, 0), (0, 0)),
-                                                value: var,
-                                            },
-                                        },
-                                    },
-                                },
-                            },
-                        }),
-                        op: AddOp::Add,
-                        rhs: Term::Factor {
-                            meta: meta((0, 0), (0, 0)),
-                            value: Factor::Exponentiation {
-                                meta: meta((0, 0), (0, 0)),
-                                value: Exponentiation::Primary {
-                                    meta: meta((0, 0), (0, 0)),
-                                    value: Primary::UnsignedConstant {
-                                        meta: meta((0, 0), (0, 0)),
-                                        value: UnsignedConstant::Number {
-                                            meta: meta((0, 0), (0, 0)),
-                                            value: Number::Integer {
-                                                meta: meta((0, 0), (0, 0)),
-                                                value: 1,
-                                            },
-                                        },
-                                    },
-                                },
-                            },
-                        },
-                    },
-                },
-            })?;
+            self.gen_increment(var)?;
         } else {
-            self.gen_assignment(Assignment {
-                meta: meta((0, 0), (0, 0)),
-                var: VariableAccess::Identifier {
-                    meta: meta((0, 0), (0, 0)),
-                    value: var.clone(),
-                },
-                rhs: Expression::Simple {
-                    meta: meta((0, 0), (0, 0)),
-                    value: SimpleExpression::AddExpr {
-                        meta: meta((0, 0), (0, 0)),
-                        lhs: Box::new(SimpleExpression::Term {
-                            meta: meta((0, 0), (0, 0)),
-                            value: Term::Factor {
-                                meta: meta((0, 0), (0, 0)),
-                                value: Factor::Exponentiation {
-                                    meta: meta((0, 0), (0, 0)),
-                                    value: Exponentiation::Primary {
-                                        meta: meta((0, 0), (0, 0)),
-                                        value: Primary::VariableAccess {
-                                            meta: meta((0, 0), (0, 0)),
-                                            value: VariableAccess::Identifier {
-                                                meta: meta((0, 0), (0, 0)),
-                                                value: var,
-                                            },
-                                        },
-                                    },
-                                },
-                            },
-                        }),
-                        op: AddOp::Sub,
-                        rhs: Term::Factor {
-                            meta: meta((0, 0), (0, 0)),
-                            value: Factor::Exponentiation {
-                                meta: meta((0, 0), (0, 0)),
-                                value: Exponentiation::Primary {
-                                    meta: meta((0, 0), (0, 0)),
-                                    value: Primary::UnsignedConstant {
-                                        meta: meta((0, 0), (0, 0)),
-                                        value: UnsignedConstant::Number {
-                                            meta: meta((0, 0), (0, 0)),
-                                            value: Number::Integer {
-                                                meta: meta((0, 0), (0, 0)),
-                                                value: 1,
-                                            },
-                                        },
-                                    },
-                                },
-                            },
-                        },
-                    },
-                },
-            })?;
+            self.gen_decrement(var)?;
         }
         LLVMBuildBr(self.builder, bb_test);
 
         LLVMPositionBuilderAtEnd(self.builder, bb_exit);
         Ok(ptr::null_mut())
+    }
+
+    unsafe fn gen_increment(&mut self, var: String) -> Result<LLVMValueRef, String> {
+        self.gen_assignment(Assignment {
+            meta: Default::default(),
+            var: VariableAccess::Identifier {
+                meta: Default::default(),
+                value: var.clone(),
+            },
+            rhs: Expression::Simple {
+                meta: Default::default(),
+                value: SimpleExpression::AddExpr {
+                    meta: Default::default(),
+                    lhs: Box::new(SimpleExpression::Term {
+                        meta: Default::default(),
+                        value: Term::Factor {
+                            meta: Default::default(),
+                            value: Factor::Exponentiation {
+                                meta: Default::default(),
+                                value: Exponentiation::Primary {
+                                    meta: Default::default(),
+                                    value: Primary::VariableAccess {
+                                        meta: Default::default(),
+                                        value: VariableAccess::Identifier {
+                                            meta: Default::default(),
+                                            value: var,
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    }),
+                    op: AddOp::Add,
+                    rhs: Term::Factor {
+                        meta: Default::default(),
+                        value: Factor::Exponentiation {
+                            meta: Default::default(),
+                            value: Exponentiation::Primary {
+                                meta: Default::default(),
+                                value: Primary::UnsignedConstant {
+                                    meta: Default::default(),
+                                    value: UnsignedConstant::Number {
+                                        meta: Default::default(),
+                                        value: Number::Integer {
+                                            meta: Default::default(),
+                                            value: 1,
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        })
+    }
+
+    unsafe fn gen_decrement(&mut self, var: String) -> Result<LLVMValueRef, String> {
+        self.gen_assignment(Assignment {
+            meta: Default::default(),
+            var: VariableAccess::Identifier {
+                meta: Default::default(),
+                value: var.clone(),
+            },
+            rhs: Expression::Simple {
+                meta: Default::default(),
+                value: SimpleExpression::AddExpr {
+                    meta: Default::default(),
+                    lhs: Box::new(SimpleExpression::Term {
+                        meta: Default::default(),
+                        value: Term::Factor {
+                            meta: Default::default(),
+                            value: Factor::Exponentiation {
+                                meta: Default::default(),
+                                value: Exponentiation::Primary {
+                                    meta: Default::default(),
+                                    value: Primary::VariableAccess {
+                                        meta: Default::default(),
+                                        value: VariableAccess::Identifier {
+                                            meta: Default::default(),
+                                            value: var,
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    }),
+                    op: AddOp::Sub,
+                    rhs: Term::Factor {
+                        meta: Default::default(),
+                        value: Factor::Exponentiation {
+                            meta: Default::default(),
+                            value: Exponentiation::Primary {
+                                meta: Default::default(),
+                                value: Primary::UnsignedConstant {
+                                    meta: Default::default(),
+                                    value: UnsignedConstant::Number {
+                                        meta: Default::default(),
+                                        value: Number::Integer {
+                                            meta: Default::default(),
+                                            value: 1,
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        })
     }
 
     pub unsafe fn gen_closed_statement(
@@ -781,7 +955,7 @@ impl Codegen {
     }
 
     pub unsafe fn gen_assignment(&mut self, a: Assignment) -> Result<LLVMValueRef, String> {
-        let lhs = self.gen_variable_access(&a.var)?;
+        let lhs = self.gen_variable_access(&a.var, true)?;
         let rhs = self.gen_expression(&a.rhs)?;
         let rhs_v = self.load_if_needed(rhs);
         let r = LLVMBuildStore(self.builder, rhs_v, lhs);
@@ -794,26 +968,41 @@ impl Codegen {
         params: &Vec<Parameter>,
     ) -> Result<LLVMValueRef, String> {
         if id == "writeln" {
-            let printf_var = self.printf;
-            let format = b"%d\n\0";
+            let printf_var = self.global_varmap.get("printf").unwrap().llvm_val;
+            let param = self.gen_expression(&params[0])?;
+            let param_v = self.load_if_needed(param);
+            use llvm::LLVMTypeKind;
+            let (format, p) = match LLVMGetTypeKind(LLVMTypeOf(param_v)) {
+                LLVMTypeKind::LLVMDoubleTypeKind | LLVMTypeKind::LLVMFloatTypeKind => (
+                    b"%f\n\0",
+                    LLVMBuildFPExt(
+                        self.builder,
+                        param_v,
+                        LLVMDoubleType(),
+                        CString::new("float_cast").unwrap().as_ptr(),
+                    ),
+                ),
+                LLVMTypeKind::LLVMIntegerTypeKind => (
+                    b"%d\n\0",
+                    LLVMBuildZExtOrBitCast(
+                        self.builder,
+                        param_v,
+                        LLVMInt32Type(),
+                        CString::new("int_cast").unwrap().as_ptr(),
+                    ),
+                ),
+                _ => return Err("Printing unsupported type".to_string()),
+            };
             let format_str = LLVMBuildGlobalStringPtr(
                 self.builder,
                 format.as_ptr() as *const _,
-                b".int_format\0".as_ptr() as *const _,
+                b".printf_format\0".as_ptr() as *const _,
             );
-            let param = self.gen_expression(&params[0])?;
             let f = LLVMBuildZExtOrBitCast(
                 self.builder,
                 format_str,
                 LLVMPointerType(LLVMInt8Type(), 0),
                 CString::new("cast_format").unwrap().as_ptr(),
-            );
-            let param_v = self.load_if_needed(param);
-            let p = LLVMBuildZExtOrBitCast(
-                self.builder,
-                param_v,
-                LLVMInt32Type(),
-                CString::new("cast_int").unwrap().as_ptr(),
             );
             LLVMBuildCall(
                 self.builder,

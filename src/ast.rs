@@ -1,6 +1,6 @@
 use std::fmt;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Default)]
 pub struct Meta {
     pub start: (usize, usize),
     pub end: (usize, usize),
@@ -47,7 +47,7 @@ pub struct ConstDef {
     pub expr: ConstExpression,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ConstExpression {
     RelExpr {
         meta: Meta,
@@ -61,7 +61,7 @@ pub enum ConstExpression {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ConstSimpleExpression {
     AddExpr {
         meta: Meta,
@@ -75,7 +75,7 @@ pub enum ConstSimpleExpression {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ConstTerm {
     MulExpr {
         meta: Meta,
@@ -89,7 +89,7 @@ pub enum ConstTerm {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ConstFactor {
     Factor {
         meta: Meta,
@@ -102,7 +102,7 @@ pub enum ConstFactor {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ConstExponentiation {
     Exponent {
         meta: Meta,
@@ -115,7 +115,7 @@ pub enum ConstExponentiation {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ConstPrimary {
     Identifier {
         meta: Meta,
@@ -159,20 +159,20 @@ pub enum NonString {
     Identifier { meta: Meta, value: Identifier },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum UnsignedConstant {
     Number { meta: Meta, value: Number },
     String { meta: Meta, value: String },
     Nil { meta: Meta },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Number {
     Integer { meta: Meta, value: usize },
     Real { meta: Meta, value: f32 },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TypeDef {
     pub meta: Meta,
     pub id: Identifier,
@@ -305,14 +305,14 @@ pub enum ProcedureDecl {
     },
 }
 
-#[derive(Debug, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct ProcedureHeading {
     pub meta: Meta,
     pub name: Identifier,
     pub params: Vec<FormalParameter>,
 }
 
-#[derive(Debug, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub enum FormalParameter {
     Value {
         meta: Meta,
@@ -353,7 +353,7 @@ pub enum FunctionDecl {
     },
 }
 
-#[derive(Debug, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct FunctionHeading {
     pub meta: Meta,
     pub name: Identifier,
@@ -610,14 +610,14 @@ pub enum Primary {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum AddOp {
     Add,
     Sub,
     Or,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum MulOp {
     Mul,
     FDiv,
@@ -626,7 +626,7 @@ pub enum MulOp {
     And,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum RelOp {
     Equal,
     NotEqual,

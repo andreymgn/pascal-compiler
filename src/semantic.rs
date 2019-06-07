@@ -7,17 +7,17 @@ use lazy_static::lazy_static;
 
 #[derive(Debug)]
 pub struct Scope {
-    labels: Vec<usize>,
-    consts: HashSet<Const>,
-    vars: HashSet<Variable>,
-    types: Vec<TypeDef>,
-    procs: HashSet<Proc>,
+    pub labels: Vec<usize>,
+    pub consts: HashSet<Const>,
+    pub vars: HashSet<Variable>,
+    pub types: Vec<TypeDef>,
+    pub procs: HashSet<Proc>,
 }
 
 #[derive(Debug)]
 pub struct Const {
-    name: String,
-    variant: ConstType,
+    pub name: String,
+    pub variant: ConstType,
 }
 
 impl Hash for Const {
@@ -45,8 +45,8 @@ pub enum ConstType {
 
 #[derive(Debug)]
 pub struct Variable {
-    name: String,
-    typ: Type,
+    pub name: String,
+    pub typ: Type,
 }
 
 impl Hash for Variable {
@@ -65,10 +65,10 @@ impl Eq for Variable {}
 
 #[derive(Debug)]
 pub struct Proc {
-    name: String,
-    params: Vec<FormalParameter>,
-    ret: Option<String>,
-    scope: Option<Scope>,
+    pub name: String,
+    pub params: Vec<FormalParameter>,
+    pub ret: Option<String>,
+    pub scope: Option<Scope>,
 }
 
 impl Hash for Proc {
@@ -96,16 +96,16 @@ impl PartialEq for Proc {
 
 impl Eq for Proc {}
 
-pub fn get_symbols(p: Program) -> Result<Scope, Vec<String>> {
-    convert_block(p.block)
+pub fn get_symbols(p: &Program) -> Result<Scope, Vec<String>> {
+    convert_block(&p.block)
 }
 
-fn convert_block(b: Block) -> Result<Scope, Vec<String>> {
-    let labels = b.label_decls;
-    let consts = get_consts(b.constant_defs)?;
-    let vars = get_vars(b.variable_decls)?;
-    let types = b.type_defs;
-    let procs = get_procs(b.proc_decls)?;
+fn convert_block(b: &Block) -> Result<Scope, Vec<String>> {
+    let labels = b.label_decls.clone();
+    let consts = get_consts(&b.constant_defs)?;
+    let vars = get_vars(&b.variable_decls)?;
+    let types = b.type_defs.clone();
+    let procs = get_procs(&b.proc_decls)?;
     Ok(Scope {
         labels,
         consts,
@@ -115,11 +115,11 @@ fn convert_block(b: Block) -> Result<Scope, Vec<String>> {
     })
 }
 
-fn get_consts(cs: Vec<ConstDef>) -> Result<HashSet<Const>, Vec<String>> {
+fn get_consts(cs: &Vec<ConstDef>) -> Result<HashSet<Const>, Vec<String>> {
     let mut res = HashSet::new();
     let mut errs = vec![];
     for c in cs.into_iter() {
-        if !res.insert(constexpr_to_const(&c.id, c.expr).unwrap()) {
+        if !res.insert(constexpr_to_const(&c.id, c.expr.clone()).unwrap()) {
             errs.push(format!("Constant with name {} already defined", c.id));
         }
     }
@@ -191,10 +191,10 @@ fn constexpr_to_const(name: &str, c: ConstExpression) -> Result<Const, String> {
     Err("Didn't match".to_string())
 }
 
-fn get_vars(vs: Vec<VariableDecl>) -> Result<HashSet<Variable>, Vec<String>> {
+fn get_vars(vs: &Vec<VariableDecl>) -> Result<HashSet<Variable>, Vec<String>> {
     let mut res = HashSet::new();
     let mut errs = vec![];
-    for v in &vs {
+    for v in vs {
         for id in v.ids.iter() {
             if !res.insert(Variable {
                 name: id.to_string(),
@@ -210,7 +210,7 @@ fn get_vars(vs: Vec<VariableDecl>) -> Result<HashSet<Variable>, Vec<String>> {
     Err(errs)
 }
 
-fn get_procs(ps: Vec<ProcedureOrFuncDecl>) -> Result<HashSet<Proc>, Vec<String>> {
+fn get_procs(ps: &Vec<ProcedureOrFuncDecl>) -> Result<HashSet<Proc>, Vec<String>> {
     let mut res = HashSet::new();
     let mut errs = vec![];
     for p in ps.into_iter() {
@@ -238,7 +238,7 @@ fn get_procs(ps: Vec<ProcedureOrFuncDecl>) -> Result<HashSet<Proc>, Vec<String>>
     }
 }
 
-fn convert_procedure(p: ProcedureDecl) -> Result<Proc, Vec<String>> {
+fn convert_procedure(p: &ProcedureDecl) -> Result<Proc, Vec<String>> {
     match p {
         ProcedureDecl::Directive {
             meta: _,
@@ -246,7 +246,7 @@ fn convert_procedure(p: ProcedureDecl) -> Result<Proc, Vec<String>> {
             is_forward: _,
         } => Ok(Proc {
             name: head.name.to_string(),
-            params: head.params,
+            params: head.params.clone(),
             ret: None,
             scope: None,
         }),
@@ -255,10 +255,10 @@ fn convert_procedure(p: ProcedureDecl) -> Result<Proc, Vec<String>> {
             head,
             block,
         } => {
-            let scope = convert_block(block)?;
+            let scope = convert_block(&block)?;
             Ok(Proc {
                 name: head.name.to_string(),
-                params: head.params,
+                params: head.params.clone(),
                 ret: None,
                 scope: Some(scope),
             })
@@ -266,14 +266,14 @@ fn convert_procedure(p: ProcedureDecl) -> Result<Proc, Vec<String>> {
     }
 }
 
-fn convert_function(p: FunctionDecl) -> Result<Proc, Vec<String>> {
+fn convert_function(p: &FunctionDecl) -> Result<Proc, Vec<String>> {
     match p {
         FunctionDecl::Identification {
             meta: _,
             name,
             block,
         } => {
-            let scope = convert_block(block)?;
+            let scope = convert_block(&block)?;
             Ok(Proc {
                 name: name.to_string(),
                 params: vec![],
@@ -286,11 +286,11 @@ fn convert_function(p: FunctionDecl) -> Result<Proc, Vec<String>> {
             head,
             block,
         } => {
-            let scope = convert_block(block)?;
+            let scope = convert_block(&block)?;
             Ok(Proc {
                 name: head.name.to_string(),
-                params: head.params,
-                ret: Some(head.result),
+                params: head.params.clone(),
+                ret: Some(head.result.clone()),
                 scope: Some(scope),
             })
         }
@@ -300,8 +300,8 @@ fn convert_function(p: FunctionDecl) -> Result<Proc, Vec<String>> {
             is_forward: _,
         } => Ok(Proc {
             name: head.name.to_string(),
-            params: head.params,
-            ret: Some(head.result),
+            params: head.params.clone(),
+            ret: Some(head.result.clone()),
             scope: None,
         }),
     }
